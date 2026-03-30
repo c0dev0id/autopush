@@ -47,7 +47,8 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string) {
 		}
 	}
 	if len(runs) == 0 {
-		return // no workflows triggered for this commit
+		notify("workflow check disabled: no workflow present")
+		return
 	}
 
 	notify(fmt.Sprintf("watching %d workflow(s)...", len(runs)))
