@@ -27,25 +27,29 @@ func NewWatcher(path string) (*Watcher, error) {
 		fd:   -1,
 		C:    make(chan struct{}, 1),
 	}
-	w.addFile()
+	if !w.addFile() {
+		notify("COMMIT_EDITMSG not found, falling back to polling")
+	}
 	go w.loop()
 	return w, nil
 }
 
 // addFile opens the watched path and registers it with the kqueue.
-func (w *Watcher) addFile() {
+// Returns true if the file was successfully registered.
+func (w *Watcher) addFile() bool {
 	fd, err := unix.Open(w.path, unix.O_RDONLY|unix.O_NONBLOCK, 0)
 	if err != nil {
-		return
+		return false
 	}
 	var ev unix.Kevent_t
 	unix.SetKevent(&ev, fd, unix.EVFILT_VNODE, unix.EV_ADD|unix.EV_CLEAR|unix.EV_ENABLE)
 	ev.Fflags = unix.NOTE_WRITE | unix.NOTE_DELETE | unix.NOTE_RENAME | unix.NOTE_ATTRIB
 	if _, err := unix.Kevent(w.kq, []unix.Kevent_t{ev}, nil, nil); err != nil {
 		unix.Close(fd)
-		return
+		return false
 	}
 	w.fd = fd
+	return true
 }
 
 func (w *Watcher) loop() {
