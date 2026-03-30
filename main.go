@@ -68,14 +68,17 @@ func main() {
 
 		token := githubToken()
 		if token == "" {
+			notify("workflow check disabled: github token not set")
 			return
 		}
 		remoteURL, err := getRemoteURL(repoRoot)
 		if err != nil {
+			notify("workflow check disabled: cannot read remote URL")
 			return
 		}
 		owner, repo, err := parseGitHubOwnerRepo(remoteURL)
 		if err != nil {
+			notify("workflow check disabled: remote is not a GitHub repo")
 			return
 		}
 
