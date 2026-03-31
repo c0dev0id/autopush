@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -111,5 +112,15 @@ func githubToken() string {
 	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
 		return t
 	}
-	return os.Getenv("GH_TOKEN")
+	if t := os.Getenv("GH_TOKEN"); t != "" {
+		return t
+	}
+	for _, path := range []string{".gh_token", filepath.Join(os.Getenv("HOME"), ".gh_token")} {
+		if b, err := os.ReadFile(path); err == nil {
+			if t := strings.TrimSpace(string(b)); t != "" {
+				return t
+			}
+		}
+	}
+	return ""
 }
