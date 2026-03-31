@@ -4,14 +4,39 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
+
+const (
+	ansiRed   = "\033[31m"
+	ansiGreen = "\033[32m"
+	ansiReset = "\033[0m"
+)
+
+// colorLine wraps line in ANSI color codes based on whether the status
+// contains "failed" or "passed". No-ops when stdout is not a terminal.
+func colorLine(line, status string) string {
+	fi, err := os.Stdout.Stat()
+	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
+		return line
+	}
+	s := strings.ToLower(status)
+	switch {
+	case strings.Contains(s, "failed"):
+		return ansiRed + line + ansiReset
+	case strings.Contains(s, "passed"):
+		return ansiGreen + line + ansiReset
+	}
+	return line
+}
 
 // notify prints a timestamped status line and updates the X window title and
 // tmux status bar.
 func notify(status string) {
 	ts := time.Now().Format("15:04:05")
-	fmt.Printf("[%s] %s\n", ts, status)
+	line := fmt.Sprintf("[%s] %s", ts, status)
+	fmt.Println(colorLine(line, status))
 	setXTitle("autopush: " + status)
 	setTmuxStatus(status)
 }
