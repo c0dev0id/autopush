@@ -9,8 +9,9 @@ import (
 )
 
 const (
-	pollInterval  = 15 * time.Second
-	appearTimeout = 60 * time.Second
+	appearInterval = 5 * time.Second
+	appearTimeout  = 60 * time.Second
+	pollInterval   = 10 * time.Second
 )
 
 type workflowRun struct {
@@ -32,22 +33,25 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string) {
 	client := &http.Client{Timeout: 15 * time.Second}
 
 	// Wait for runs to appear; they may take a few seconds to register after push.
+	// Try immediately first (handles the startup/already-pushed case), then poll.
 	var runs []workflowRun
+	if r, err := fetchRuns(ctx, client, owner, repo, sha, token); err == nil && len(r) > 0 {
+		runs = r
+	}
 	deadline := time.Now().Add(appearTimeout)
-	for time.Now().Before(deadline) {
+	for len(runs) == 0 && time.Now().Before(deadline) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(pollInterval):
+		case <-time.After(appearInterval):
 		}
 		r, err := fetchRuns(ctx, client, owner, repo, sha, token)
 		if err == nil && len(r) > 0 {
 			runs = r
-			break
 		}
 	}
 	if len(runs) == 0 {
-		notify("workflow check disabled: no workflow present")
+		notify("no workflow started for " + sha[:8] + " -- trigger manually or push a new commit")
 		return
 	}
 

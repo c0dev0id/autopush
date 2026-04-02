@@ -63,9 +63,9 @@ func main() {
 		lastPushedSHA = sha
 		if !pushed {
 			notify("up to date")
-			return
+		} else {
+			notify("pushed " + sha[:8])
 		}
-		notify("pushed " + sha[:8])
 
 		token := githubToken()
 		if token == "" {
