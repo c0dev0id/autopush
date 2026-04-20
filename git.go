@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -42,6 +43,17 @@ func push(repoDir string) (pushed bool, err error) {
 	}
 	upToDate := strings.Contains(strings.ToLower(output), "everything up")
 	return !upToDate, nil
+}
+
+// hasWorkflows reports whether the repo contains any GitHub Actions workflow files.
+func hasWorkflows(repoDir string) bool {
+	for _, pattern := range []string{"*.yml", "*.yaml"} {
+		matches, err := filepath.Glob(filepath.Join(repoDir, ".github", "workflows", pattern))
+		if err == nil && len(matches) > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func getRemoteURL(repoDir string) (string, error) {

@@ -75,6 +75,10 @@ func main() {
 			notify("pushed " + sha[:8])
 		}
 
+		if !hasWorkflows(repoRoot) {
+			notify("no workflows configured")
+			return
+		}
 		token := githubToken()
 		if token == "" {
 			notify("workflow check disabled: github token not set")
@@ -130,6 +134,10 @@ func runOneshot(repoRoot string) int {
 		notify("up to date")
 	}
 
+	if !hasWorkflows(repoRoot) {
+		notify("no workflows configured")
+		return 0
+	}
 	token := githubToken()
 	if token == "" {
 		return 0
