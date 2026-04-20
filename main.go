@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,9 +11,12 @@ import (
 )
 
 func main() {
+	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
+	flag.Parse()
+
 	dir := "."
-	if len(os.Args) > 1 {
-		dir = os.Args[1]
+	if args := flag.Args(); len(args) > 0 {
+		dir = args[0]
 	}
 
 	repoRoot, err := getRepoRoot(dir)
@@ -26,6 +30,10 @@ func main() {
 	}
 	if branch == "HEAD" {
 		fatalf("detached HEAD -- check out a branch first")
+	}
+
+	if *oneshot {
+		os.Exit(runOneshot(repoRoot))
 	}
 
 	notify(fmt.Sprintf("watching %s [%s]", filepath.Base(repoRoot), branch))
@@ -85,7 +93,7 @@ func main() {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelWorkflow = cancel
-		go watchWorkflows(ctx, owner, repo, sha, token)
+		go func() { watchWorkflows(ctx, owner, repo, sha, token, false) }()
 	}
 
 	doCheck() // check immediately on startup for any unpushed commits
@@ -101,6 +109,41 @@ func main() {
 			doCheck()
 		}
 	}
+}
+
+func runOneshot(repoRoot string) int {
+	sha, err := getCurrentSHA(repoRoot)
+	if err != nil {
+		notify("error: cannot get current SHA: " + err.Error())
+		return 1
+	}
+
+	notify("pushing " + sha[:8] + "...")
+	pushed, err := push(repoRoot)
+	if err != nil {
+		notify("push failed: " + err.Error())
+		return 1
+	}
+	if pushed {
+		notify("pushed " + sha[:8])
+	} else {
+		notify("up to date")
+	}
+
+	token := githubToken()
+	if token == "" {
+		return 0
+	}
+	remoteURL, err := getRemoteURL(repoRoot)
+	if err != nil {
+		return 0
+	}
+	owner, repo, err := parseGitHubOwnerRepo(remoteURL)
+	if err != nil {
+		return 0
+	}
+
+	return watchWorkflows(context.Background(), owner, repo, sha, token, true)
 }
 
 func fatalf(format string, args ...interface{}) {
