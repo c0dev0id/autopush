@@ -32,11 +32,13 @@ func main() {
 		fatalf("detached HEAD -- check out a branch first")
 	}
 
+	repoName = filepath.Base(repoRoot)
+
 	if *oneshot {
 		os.Exit(runOneshot(repoRoot))
 	}
 
-	notify(fmt.Sprintf("watching %s [%s]", filepath.Base(repoRoot), branch))
+	notify(fmt.Sprintf("watching [%s]", branch))
 
 	commitMsgPath := filepath.Join(repoRoot, ".git", "COMMIT_EDITMSG")
 	watcher, err := NewWatcher(commitMsgPath)
