@@ -31,7 +31,7 @@ type runsResponse struct {
 // runs reach a terminal state. Exits immediately when ctx is cancelled.
 // In oneshot mode it returns an exit code (0=ok/no-workflow, 1=error, 2=failed);
 // in daemon mode the return value is ignored.
-func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot bool) int {
+func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName string, oneshot bool) int {
 	client := &http.Client{Timeout: 15 * time.Second}
 
 	// Wait for runs to appear; they may take a few seconds to register after push.
@@ -39,7 +39,7 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot
 	var runs []workflowRun
 	if r, err := fetchRuns(ctx, client, owner, repo, sha, token); err != nil {
 		if oneshot {
-			notify("workflow check failed: " + err.Error())
+			notify(repoName, "workflow check failed: "+err.Error())
 			return 1
 		}
 	} else if len(r) > 0 {
@@ -55,7 +55,7 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot
 		r, err := fetchRuns(ctx, client, owner, repo, sha, token)
 		if err != nil {
 			if oneshot {
-				notify("workflow check failed: " + err.Error())
+				notify(repoName, "workflow check failed: "+err.Error())
 				return 1
 			}
 			continue
@@ -65,11 +65,11 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot
 		}
 	}
 	if len(runs) == 0 {
-		notify("no workflow started for " + sha[:8] + " -- trigger manually or push a new commit")
+		notify(repoName, "no workflow started for "+sha[:8]+" -- trigger manually or push a new commit")
 		return 0
 	}
 
-	notify(fmt.Sprintf("watching %d workflow(s)...", len(runs)))
+	notify(repoName, fmt.Sprintf("watching %d workflow(s)...", len(runs)))
 
 	for {
 		select {
@@ -81,7 +81,7 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot
 		runs, err := fetchRuns(ctx, client, owner, repo, sha, token)
 		if err != nil {
 			if oneshot {
-				notify("workflow check failed: " + err.Error())
+				notify(repoName, "workflow check failed: "+err.Error())
 				return 1
 			}
 			continue
@@ -99,13 +99,13 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token string, oneshot
 				// acceptable
 			default:
 				anyFailed = true
-				notify(fmt.Sprintf("FAILED: %s -- %s", r.Name, r.HTMLURL))
+				notify(repoName, fmt.Sprintf("FAILED: %s -- %s", r.Name, r.HTMLURL))
 			}
 		}
 
 		if allDone {
 			if !anyFailed {
-				notify("CI passed")
+				notify(repoName, "CI passed")
 			}
 			if anyFailed {
 				return 2

@@ -14,8 +14,6 @@ const (
 	ansiReset = "\033[0m"
 )
 
-var repoName string
-
 // colorLine wraps line in ANSI color codes based on whether the status
 // contains "failed" or "passed". No-ops when stdout is not a terminal.
 func colorLine(line, status string) string {
@@ -35,7 +33,7 @@ func colorLine(line, status string) string {
 
 // notify prints a timestamped status line and updates the X window title and
 // tmux status bar.
-func notify(status string) {
+func notify(repoName, status string) {
 	ts := time.Now().Format("15:04:05")
 	line := fmt.Sprintf("(%s) [%s] %s", repoName, ts, status)
 	fmt.Println(colorLine(line, status))

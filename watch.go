@@ -16,7 +16,7 @@ type Watcher struct {
 }
 
 // NewWatcher creates a kqueue watcher for path and starts the event loop.
-func NewWatcher(path string) (*Watcher, error) {
+func NewWatcher(path, repoName string) (*Watcher, error) {
 	kq, err := unix.Kqueue()
 	if err != nil {
 		return nil, err
@@ -28,7 +28,7 @@ func NewWatcher(path string) (*Watcher, error) {
 		C:    make(chan struct{}, 1),
 	}
 	if !w.addFile() {
-		notify("COMMIT_EDITMSG not found, falling back to polling")
+		notify(repoName, "COMMIT_EDITMSG not found, falling back to polling")
 	}
 	go w.loop()
 	return w, nil
