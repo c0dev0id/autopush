@@ -56,6 +56,22 @@ func hasWorkflows(repoDir string) bool {
 	return false
 }
 
+// listSubmodules returns the absolute paths of all submodules (recursive).
+func listSubmodules(repoDir string) ([]string, error) {
+	out, err := gitCmd(repoDir, "submodule", "foreach", "--recursive", "--quiet", "echo $displaypath")
+	if err != nil || out == "" {
+		return nil, err
+	}
+	var paths []string
+	for _, rel := range strings.Split(out, "\n") {
+		rel = strings.TrimSpace(rel)
+		if rel != "" {
+			paths = append(paths, filepath.Join(repoDir, rel))
+		}
+	}
+	return paths, nil
+}
+
 func getRemoteURL(repoDir string) (string, error) {
 	return gitCmd(repoDir, "remote", "get-url", "origin")
 }

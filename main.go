@@ -13,6 +13,7 @@ import (
 
 func main() {
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
+	recursive := flag.Bool("r", false, "also watch and push submodules")
 	flag.Parse()
 
 	dirs := flag.Args()
@@ -25,7 +26,17 @@ func main() {
 		name string
 	}
 
+	seen := make(map[string]bool)
 	repos := make([]repoInfo, 0, len(dirs))
+
+	addRepo := func(root, name string) {
+		if seen[root] {
+			return
+		}
+		seen[root] = true
+		repos = append(repos, repoInfo{root, name})
+	}
+
 	for _, dir := range dirs {
 		repoRoot, err := getRepoRoot(dir)
 		if err != nil {
@@ -38,7 +49,21 @@ func main() {
 		if branch == "HEAD" {
 			fatalf("detached HEAD in %s -- check out a branch first", repoRoot)
 		}
-		repos = append(repos, repoInfo{repoRoot, filepath.Base(repoRoot)})
+		addRepo(repoRoot, filepath.Base(repoRoot))
+
+		if *recursive {
+			subPaths, err := listSubmodules(repoRoot)
+			if err != nil {
+				fatalf("cannot list submodules (%s): %v", repoRoot, err)
+			}
+			for _, sp := range subPaths {
+				subRoot, err := getRepoRoot(sp)
+				if err != nil {
+					fatalf("submodule not a git repository (%s): %v", sp, err)
+				}
+				addRepo(subRoot, filepath.Base(subRoot))
+			}
+		}
 	}
 
 	if *oneshot {
