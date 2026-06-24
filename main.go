@@ -14,6 +14,7 @@ import (
 func main() {
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
 	recursive := flag.Bool("r", false, "also watch and push submodules")
+	doPull := flag.Bool("p", false, "pull --rebase before each push")
 	flag.Parse()
 
 	dirs := flag.Args()
@@ -76,7 +77,7 @@ func main() {
 			wg.Add(1)
 			go func(r repoInfo) {
 				defer wg.Done()
-				if code := runOneshot(r.root, r.name); code != 0 {
+				if code := runOneshot(r.root, r.name, *doPull); code != 0 {
 					mu.Lock()
 					if code > exitCode {
 						exitCode = code
@@ -90,12 +91,12 @@ func main() {
 	}
 
 	for _, r := range repos {
-		go runDaemon(r.root, r.name)
+		go runDaemon(r.root, r.name, *doPull)
 	}
 	select {}
 }
 
-func runDaemon(repoRoot, repoName string) {
+func runDaemon(repoRoot, repoName string, doPull bool) {
 	branch, _ := getCurrentBranch(repoRoot)
 	notify(repoName, fmt.Sprintf("watching [%s]", branch))
 
@@ -120,6 +121,19 @@ func runDaemon(repoRoot, repoName string) {
 		if cancelWorkflow != nil {
 			cancelWorkflow()
 			cancelWorkflow = nil
+		}
+
+		if doPull {
+			notify(repoName, "pulling...")
+			if err := pull(repoRoot); err != nil {
+				notify(repoName, "pull failed: "+err.Error())
+				return
+			}
+			// rebase may have rewritten local SHAs; re-read before push
+			sha, err = getCurrentSHA(repoRoot)
+			if err != nil || sha == lastPushedSHA {
+				return
+			}
 		}
 
 		notify(repoName, "pushing "+sha[:8]+"...")
@@ -176,11 +190,24 @@ func runDaemon(repoRoot, repoName string) {
 	}
 }
 
-func runOneshot(repoRoot, repoName string) int {
+func runOneshot(repoRoot, repoName string, doPull bool) int {
 	sha, err := getCurrentSHA(repoRoot)
 	if err != nil {
 		notify(repoName, "error: cannot get current SHA: "+err.Error())
 		return 1
+	}
+
+	if doPull {
+		notify(repoName, "pulling...")
+		if err := pull(repoRoot); err != nil {
+			notify(repoName, "pull failed: "+err.Error())
+			return 1
+		}
+		sha, err = getCurrentSHA(repoRoot)
+		if err != nil {
+			notify(repoName, "error after pull: "+err.Error())
+			return 1
+		}
 	}
 
 	notify(repoName, "pushing "+sha[:8]+"...")

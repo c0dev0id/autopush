@@ -33,6 +33,15 @@ func getRepoRoot(dir string) (string, error) {
 	return gitCmd(dir, "rev-parse", "--show-toplevel")
 }
 
+// pull runs git pull --rebase and returns any error.
+func pull(repoDir string) error {
+	out, err := exec.Command("git", "-C", repoDir, "pull", "--rebase").CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // push runs git push and reports whether anything was actually pushed.
 // Returns (false, nil) when the remote is already up to date.
 func push(repoDir string) (pushed bool, err error) {
