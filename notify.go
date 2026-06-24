@@ -82,6 +82,6 @@ func setXTitle(title string) {
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		return
 	}
-	fmt.Printf("\033]0;%s\007", title)
+	fmt.Printf("\033]0;%s\007\033k%s\033\\", title, title)
 }
 
