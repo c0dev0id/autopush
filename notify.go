@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -83,5 +84,12 @@ func setXTitle(title string) {
 		return
 	}
 	fmt.Printf("\033]0;%s\007\033k%s\033\\", title, title)
+}
+
+func restoreTmuxRename() {
+	if os.Getenv("TMUX") == "" {
+		return
+	}
+	exec.Command("tmux", "set-window-option", "automatic-rename", "on").Run()
 }
 

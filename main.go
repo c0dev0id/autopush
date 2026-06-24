@@ -5,10 +5,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -78,7 +80,15 @@ func main() {
 	}
 	initTmuxState(repoNames)
 
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+
 	if *oneshot {
+		go func() {
+			<-sigCh
+			restoreTmuxRename()
+			os.Exit(1)
+		}()
 		var (
 			wg       sync.WaitGroup
 			mu       sync.Mutex
@@ -98,13 +108,15 @@ func main() {
 			}(r)
 		}
 		wg.Wait()
+		restoreTmuxRename()
 		os.Exit(exitCode)
 	}
 
 	for _, r := range repos {
 		go runDaemon(r.root, r.name, *doPull, pullInterval)
 	}
-	select {}
+	<-sigCh
+	restoreTmuxRename()
 }
 
 func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
