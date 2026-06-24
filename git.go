@@ -14,6 +14,10 @@ func gitCmd(repoDir string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
+func getGitDir(repoDir string) (string, error) {
+	return gitCmd(repoDir, "rev-parse", "--absolute-git-dir")
+}
+
 func getCurrentSHA(repoDir string) (string, error) {
 	sha, err := gitCmd(repoDir, "rev-parse", "HEAD")
 	if err != nil {

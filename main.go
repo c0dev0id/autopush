@@ -123,7 +123,11 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 	branch, _ := getCurrentBranch(repoRoot)
 	notify(repoName, fmt.Sprintf("watching [%s]", branch))
 
-	commitMsgPath := filepath.Join(repoRoot, ".git", "COMMIT_EDITMSG")
+	gitDir, err := getGitDir(repoRoot)
+	if err != nil {
+		gitDir = filepath.Join(repoRoot, ".git")
+	}
+	commitMsgPath := filepath.Join(gitDir, "COMMIT_EDITMSG")
 	watcher, err := NewWatcher(commitMsgPath, repoName)
 	if err != nil {
 		notify(repoName, "cannot start watcher: "+err.Error())
