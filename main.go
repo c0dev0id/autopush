@@ -6,15 +6,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
 func main() {
+	// Must run before flag.Parse: strips the optional interval from -p N and
+	// rewrites os.Args so flag.Parse sees -p as a plain bool.
+	pullInterval := extractPullInterval()
+
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
 	recursive := flag.Bool("r", false, "also watch and push submodules")
-	doPull := flag.Bool("p", false, "pull --rebase before each push")
+	doPull := flag.Bool("p", false, "pull --rebase before each push; -p N also pulls every N seconds")
 	flag.Parse()
 
 	dirs := flag.Args()
@@ -97,12 +102,12 @@ func main() {
 	}
 
 	for _, r := range repos {
-		go runDaemon(r.root, r.name, *doPull)
+		go runDaemon(r.root, r.name, *doPull, pullInterval)
 	}
 	select {}
 }
 
-func runDaemon(repoRoot, repoName string, doPull bool) {
+func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 	branch, _ := getCurrentBranch(repoRoot)
 	notify(repoName, fmt.Sprintf("watching [%s]", branch))
 
@@ -112,6 +117,22 @@ func runDaemon(repoRoot, repoName string, doPull bool) {
 		notify(repoName, "cannot start watcher: "+err.Error())
 		setRepoStatus(repoName, true)
 		return
+	}
+
+	if pullInterval > 0 {
+		go func() {
+			t := time.NewTicker(time.Duration(pullInterval) * time.Second)
+			defer t.Stop()
+			for range t.C {
+				if !isWorkspaceClean(repoRoot) {
+					notify(repoName, "can't pull, workspace not clean")
+					continue
+				}
+				if err := pull(repoRoot); err != nil {
+					notify(repoName, "periodic pull failed: "+err.Error())
+				}
+			}
+		}()
 	}
 
 	var (
@@ -261,6 +282,34 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 	}
 
 	return watchWorkflows(context.Background(), owner, repo, sha, token, repoName, true)
+}
+
+// extractPullInterval scans os.Args for -p N or -p=N, strips the numeric
+// value from os.Args (so flag.Parse sees -p as a plain bool), and returns
+// the interval in seconds. Returns 0 if -p has no numeric argument.
+func extractPullInterval() int {
+	filtered := os.Args[:1:1]
+	interval := 0
+	for i := 1; i < len(os.Args); i++ {
+		arg := os.Args[i]
+		if strings.HasPrefix(arg, "-p=") {
+			if n, err := strconv.Atoi(strings.TrimPrefix(arg, "-p=")); err == nil && n > 0 {
+				interval = n
+				filtered = append(filtered, "-p")
+				continue
+			}
+		} else if arg == "-p" && i+1 < len(os.Args) {
+			if n, err := strconv.Atoi(os.Args[i+1]); err == nil && n > 0 {
+				interval = n
+				i++ // consume the number
+				filtered = append(filtered, "-p")
+				continue
+			}
+		}
+		filtered = append(filtered, arg)
+	}
+	os.Args = filtered
+	return interval
 }
 
 func fatalf(format string, args ...interface{}) {

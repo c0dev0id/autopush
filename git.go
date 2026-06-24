@@ -33,6 +33,11 @@ func getRepoRoot(dir string) (string, error) {
 	return gitCmd(dir, "rev-parse", "--show-toplevel")
 }
 
+func isWorkspaceClean(repoDir string) bool {
+	out, err := gitCmd(repoDir, "status", "--porcelain")
+	return err == nil && out == ""
+}
+
 // pull runs git pull --rebase and returns any error.
 func pull(repoDir string) error {
 	out, err := exec.Command("git", "-C", repoDir, "pull", "--rebase").CombinedOutput()
