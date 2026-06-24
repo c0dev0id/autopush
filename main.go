@@ -67,6 +67,12 @@ func main() {
 		}
 	}
 
+	repoNames := make([]string, len(repos))
+	for i, r := range repos {
+		repoNames[i] = r.name
+	}
+	initTmuxState(repoNames)
+
 	if *oneshot {
 		var (
 			wg       sync.WaitGroup
@@ -104,6 +110,7 @@ func runDaemon(repoRoot, repoName string, doPull bool) {
 	watcher, err := NewWatcher(commitMsgPath, repoName)
 	if err != nil {
 		notify(repoName, "cannot start watcher: "+err.Error())
+		setRepoStatus(repoName, true)
 		return
 	}
 
@@ -127,6 +134,7 @@ func runDaemon(repoRoot, repoName string, doPull bool) {
 			notify(repoName, "pulling...")
 			if err := pull(repoRoot); err != nil {
 				notify(repoName, "pull failed: "+err.Error())
+				setRepoStatus(repoName, true)
 				return
 			}
 			// rebase may have rewritten local SHAs; re-read before push
@@ -140,6 +148,7 @@ func runDaemon(repoRoot, repoName string, doPull bool) {
 		pushed, err := push(repoRoot)
 		if err != nil {
 			notify(repoName, "push failed: "+err.Error())
+			setRepoStatus(repoName, true)
 			return
 		}
 
@@ -152,21 +161,25 @@ func runDaemon(repoRoot, repoName string, doPull bool) {
 
 		if !hasWorkflows(repoRoot) {
 			notify(repoName, "no workflows configured")
+			setRepoStatus(repoName, false)
 			return
 		}
 		token := githubToken()
 		if token == "" {
 			notify(repoName, "workflow check disabled: github token not set")
+			setRepoStatus(repoName, false)
 			return
 		}
 		remoteURL, err := getRemoteURL(repoRoot)
 		if err != nil {
 			notify(repoName, "workflow check disabled: cannot read remote URL")
+			setRepoStatus(repoName, false)
 			return
 		}
 		owner, repo, err := parseGitHubOwnerRepo(remoteURL)
 		if err != nil {
 			notify(repoName, "workflow check disabled: remote is not a GitHub repo")
+			setRepoStatus(repoName, false)
 			return
 		}
 
@@ -194,6 +207,7 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 	sha, err := getCurrentSHA(repoRoot)
 	if err != nil {
 		notify(repoName, "error: cannot get current SHA: "+err.Error())
+		setRepoStatus(repoName, true)
 		return 1
 	}
 
@@ -201,11 +215,13 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 		notify(repoName, "pulling...")
 		if err := pull(repoRoot); err != nil {
 			notify(repoName, "pull failed: "+err.Error())
+			setRepoStatus(repoName, true)
 			return 1
 		}
 		sha, err = getCurrentSHA(repoRoot)
 		if err != nil {
 			notify(repoName, "error after pull: "+err.Error())
+			setRepoStatus(repoName, true)
 			return 1
 		}
 	}
@@ -214,6 +230,7 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 	pushed, err := push(repoRoot)
 	if err != nil {
 		notify(repoName, "push failed: "+err.Error())
+		setRepoStatus(repoName, true)
 		return 1
 	}
 	if pushed {
@@ -224,18 +241,22 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 
 	if !hasWorkflows(repoRoot) {
 		notify(repoName, "no workflows configured")
+		setRepoStatus(repoName, false)
 		return 0
 	}
 	token := githubToken()
 	if token == "" {
+		setRepoStatus(repoName, false)
 		return 0
 	}
 	remoteURL, err := getRemoteURL(repoRoot)
 	if err != nil {
+		setRepoStatus(repoName, false)
 		return 0
 	}
 	owner, repo, err := parseGitHubOwnerRepo(remoteURL)
 	if err != nil {
+		setRepoStatus(repoName, false)
 		return 0
 	}
 

@@ -123,8 +123,10 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName strin
 			if allDone {
 				if !anyFailed {
 					notify(repoName, "CI passed")
+					setRepoStatus(repoName, false)
 				}
 				if anyFailed {
+					setRepoStatus(repoName, true)
 					return 2
 				}
 				return 0
@@ -169,8 +171,10 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName strin
 		if allDone {
 			if !anyFailed {
 				notify(repoName, "CI passed")
+				setRepoStatus(repoName, false)
 			}
 			if anyFailed {
+				setRepoStatus(repoName, true)
 				return 2
 			}
 			return 0

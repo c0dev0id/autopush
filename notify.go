@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,8 +15,48 @@ const (
 	ansiReset = "\033[0m"
 )
 
-// colorLine wraps line in ANSI color codes based on whether the status
-// contains "failed" or "passed". No-ops when stdout is not a terminal.
+var tmuxState struct {
+	mu    sync.Mutex
+	repos []string
+	fails map[string]bool
+}
+
+func initTmuxState(repos []string) {
+	tmuxState.mu.Lock()
+	defer tmuxState.mu.Unlock()
+	tmuxState.repos = repos
+	tmuxState.fails = make(map[string]bool, len(repos))
+}
+
+// setRepoStatus records the OK/FAIL result for a repo and rewrites the tmux
+// status bar. Only call this at terminal points (push/CI settled), not for
+// transient states like "pushing..." or "pulling...".
+func setRepoStatus(repoName string, failed bool) {
+	tmuxState.mu.Lock()
+	defer tmuxState.mu.Unlock()
+	if tmuxState.fails == nil {
+		return
+	}
+	tmuxState.fails[repoName] = failed
+	anyFailed := false
+	for _, r := range tmuxState.repos {
+		if tmuxState.fails[r] {
+			anyFailed = true
+			break
+		}
+	}
+	state := "OK"
+	if anyFailed {
+		state = "FAIL"
+	}
+	first := tmuxState.repos[0]
+	label := fmt.Sprintf("%s (%s)", state, first)
+	if len(tmuxState.repos) > 1 {
+		label = fmt.Sprintf("%s (%s+)", state, first)
+	}
+	setTmuxStatus(label)
+}
+
 func colorLine(line, status string) string {
 	fi, err := os.Stdout.Stat()
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
@@ -31,18 +72,13 @@ func colorLine(line, status string) string {
 	return line
 }
 
-// notify prints a timestamped status line and updates the X window title and
-// tmux status bar.
 func notify(repoName, status string) {
 	ts := time.Now().Format("15:04:05")
 	line := fmt.Sprintf("(%s) [%s] %s", repoName, ts, status)
 	fmt.Println(colorLine(line, status))
 	setXTitle("autopush: " + status)
-	setTmuxStatus(status)
 }
 
-// setXTitle updates the title of the current terminal window via the standard
-// OSC escape sequence. No-ops when stdout is not a character device.
 func setXTitle(title string) {
 	fi, err := os.Stdout.Stat()
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
@@ -51,8 +87,6 @@ func setXTitle(title string) {
 	fmt.Printf("\033]0;%s\007", title)
 }
 
-// setTmuxStatus writes the status string to the tmux session variable
-// @autopush. Add #{@autopush} to status-right in .tmux.conf to display it.
 func setTmuxStatus(status string) {
 	if os.Getenv("TMUX") == "" {
 		return
