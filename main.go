@@ -197,7 +197,6 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 			}
 		}
 
-		notify(repoName, "pushing "+sha[:8]+"...")
 		pushed, err := push(repoRoot)
 		if err != nil {
 			notify(repoName, "push failed: "+err.Error())
@@ -279,7 +278,6 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 		}
 	}
 
-	notify(repoName, "pushing "+sha[:8]+"...")
 	pushed, err := push(repoRoot)
 	if err != nil {
 		notify(repoName, "push failed: "+err.Error())
