@@ -15,8 +15,10 @@ import (
 )
 
 func main() {
-	// Must run before flag.Parse: strips the optional interval from -p N and
-	// rewrites os.Args so flag.Parse sees -p as a plain bool.
+	// Both run before flag.Parse. expandBundledFlags splits POSIX-style
+	// bundles (-arp, -rap60) into separate tokens; extractPullInterval then
+	// strips the optional interval from -p so flag.Parse sees -p as a bool.
+	os.Args = expandBundledFlags(os.Args)
 	pullInterval := extractPullInterval()
 
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
@@ -337,6 +339,57 @@ func extractPullInterval() int {
 	}
 	os.Args = filtered
 	return interval
+}
+
+// expandBundledFlags splits POSIX-style bundled short flags into separate
+// tokens, e.g. -arp becomes -a -r -p and -rap60 becomes -r -a -p=60. Only the
+// known single-char flags are bundled; p may carry a trailing numeric value.
+// Anything that is not a clean bundle (long flags, -p=N, unknown chars, paths)
+// is passed through untouched so flag.Parse handles or reports it.
+func expandBundledFlags(args []string) []string {
+	known := map[byte]bool{'1': true, 'r': true, 'a': true, 'p': true}
+	out := args[:1:1]
+	for _, arg := range args[1:] {
+		if len(arg) <= 2 || arg[0] != '-' || arg[1] == '-' || strings.Contains(arg, "=") {
+			out = append(out, arg)
+			continue
+		}
+		if expanded, ok := expandBundle(arg[1:], known); ok {
+			out = append(out, expanded...)
+		} else {
+			out = append(out, arg)
+		}
+	}
+	return out
+}
+
+// expandBundle expands the characters of a single bundle (without its leading
+// dash). Trailing digits immediately after p are emitted as -p=<n>. Returns
+// false if the bundle contains an unknown flag or a misplaced digit.
+func expandBundle(body string, known map[byte]bool) ([]string, bool) {
+	var out []string
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if !known[c] {
+			return nil, false
+		}
+		if c == 'p' {
+			if rest := body[i+1:]; rest != "" && isAllDigits(rest) {
+				return append(out, "-p="+rest), true
+			}
+		}
+		out = append(out, "-"+string(c))
+	}
+	return out, true
+}
+
+func isAllDigits(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] < '0' || s[i] > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func fatalf(format string, args ...interface{}) {
