@@ -22,7 +22,7 @@ func main() {
 	pullInterval := extractPullInterval()
 
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
-	recursive := flag.Bool("r", false, "also watch and push submodules")
+	recursive := flag.Bool("r", false, "also watch and push submodules that are in a pushable state")
 	doPull := flag.Bool("p", false, "pull --rebase before each push; -p N also pulls every N seconds")
 	allRepos := flag.Bool("a", false, "watch every usable git repo in the current directory (on a branch, ssh upstream)")
 	flag.Parse()
@@ -80,7 +80,12 @@ func main() {
 			for _, sp := range subPaths {
 				subRoot, err := getRepoRoot(sp)
 				if err != nil {
-					fatalf("submodule not a git repository (%s): %v", sp, err)
+					notify(filepath.Base(sp), "skipped (-r): not a usable git repository")
+					continue
+				}
+				if reason := repoUnusableReason(subRoot); reason != "" {
+					notify(filepath.Base(subRoot), "skipped (-r): "+reason)
+					continue
 				}
 				addRepo(subRoot, filepath.Base(subRoot))
 			}
@@ -180,7 +185,9 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 			cancelWorkflow = nil
 		}
 
-		if doPull {
+		// A dirty tree cannot be rebased; skip the pull (not a failure) and let
+		// the push carry the committed work. Prevents re-failing every tick.
+		if doPull && isWorkspaceClean(repoRoot) {
 			notify(repoName, "pulling...")
 			if err := pull(repoRoot); err != nil {
 				notify(repoName, "pull failed: "+err.Error())
@@ -261,7 +268,7 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 		return 1
 	}
 
-	if doPull {
+	if doPull && isWorkspaceClean(repoRoot) {
 		notify(repoName, "pulling...")
 		if err := pull(repoRoot); err != nil {
 			notify(repoName, "pull failed: "+err.Error())
@@ -321,8 +328,8 @@ func extractPullInterval() int {
 	interval := 0
 	for i := 1; i < len(os.Args); i++ {
 		arg := os.Args[i]
-		if strings.HasPrefix(arg, "-p=") {
-			if n, err := strconv.Atoi(strings.TrimPrefix(arg, "-p=")); err == nil && n > 0 {
+		if val, ok := strings.CutPrefix(arg, "-p="); ok {
+			if n, err := strconv.Atoi(val); err == nil && n > 0 {
 				interval = n
 				filtered = append(filtered, "-p")
 				continue
@@ -392,7 +399,7 @@ func isAllDigits(s string) bool {
 	return true
 }
 
-func fatalf(format string, args ...interface{}) {
+func fatalf(format string, args ...any) {
 	fmt.Fprintf(os.Stderr, "autopush: "+format+"\n", args...)
 	os.Exit(1)
 }

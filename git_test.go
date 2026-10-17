@@ -45,12 +45,24 @@ func initRepo(t *testing.T, dir string) string {
 	return string(out[:len(out)-1])
 }
 
-func track(t *testing.T, dir, url string) {
+func run(t *testing.T, name string, args ...string) {
+	t.Helper()
+	if out, err := exec.Command(name, args...).CombinedOutput(); err != nil {
+		t.Fatalf("%s %v: %v\n%s", name, args, err, out)
+	}
+}
+
+// track gives dir a real upstream by pushing to a bare repo under bareParent,
+// so @{upstream} resolves, then rewrites the origin URL to finalURL to exercise
+// the ssh/non-ssh classification independently of the push target.
+func track(t *testing.T, dir, bareParent, finalURL string) {
 	t.Helper()
 	b := initRepo(t, dir)
-	git(t, dir, "remote", "add", "origin", url)
-	git(t, dir, "config", "branch."+b+".remote", "origin")
-	git(t, dir, "config", "branch."+b+".merge", "refs/heads/"+b)
+	bare := filepath.Join(bareParent, filepath.Base(dir)+".git")
+	run(t, "git", "init", "-q", "--bare", bare)
+	git(t, dir, "remote", "add", "origin", bare)
+	git(t, dir, "push", "-q", "-u", "origin", b)
+	git(t, dir, "remote", "set-url", "origin", finalURL)
 }
 
 // mk creates an empty subdirectory of parent and returns its path.
@@ -68,10 +80,18 @@ func TestReposInDir(t *testing.T) {
 		t.Skip("git not available")
 	}
 	root := t.TempDir()
+	bares := t.TempDir()
 
-	track(t, mk(t, root, "ok_ssh"), "git@github.com:me/ok_ssh.git")
-	track(t, mk(t, root, "ok_sshurl"), "ssh://git@github.com/me/ok_sshurl.git")
-	track(t, mk(t, root, "https_only"), "https://github.com/me/https_only.git")
+	track(t, mk(t, root, "ok_ssh"), bares, "git@github.com:me/ok_ssh.git")
+	track(t, mk(t, root, "ok_sshurl"), bares, "ssh://git@github.com/me/ok_sshurl.git")
+	track(t, mk(t, root, "https_only"), bares, "https://github.com/me/https_only.git")
+
+	// tracking configured but never fetched -> @{upstream} does not resolve
+	noFetch := mk(t, root, "no_fetch")
+	b := initRepo(t, noFetch)
+	git(t, noFetch, "remote", "add", "origin", "git@github.com:me/no_fetch.git")
+	git(t, noFetch, "config", "branch."+b+".remote", "origin")
+	git(t, noFetch, "config", "branch."+b+".merge", "refs/heads/"+b)
 
 	noTrack := mk(t, root, "no_track")
 	initRepo(t, noTrack)

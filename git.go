@@ -128,6 +128,9 @@ func repoUnusableReason(repoDir string) string {
 	if err != nil || remote == "" {
 		return "no upstream tracking branch set for " + branch
 	}
+	if !upstreamRefExists(repoDir) {
+		return "upstream for " + branch + " not fetched (remote-tracking ref missing)"
+	}
 	url, err := remoteURL(repoDir, remote)
 	if err != nil || url == "" {
 		return "tracking remote '" + remote + "' has no URL"
@@ -136,6 +139,14 @@ func repoUnusableReason(repoDir string) string {
 		return "tracking remote '" + remote + "' is not ssh (" + url + ")"
 	}
 	return ""
+}
+
+// upstreamRefExists reports whether the current branch's @{upstream} resolves
+// to a commit. It is false when tracking is configured but the remote-tracking
+// ref was never fetched or has been deleted on the remote.
+func upstreamRefExists(repoDir string) bool {
+	out, err := gitCmd(repoDir, "rev-parse", "--verify", "--quiet", "@{upstream}")
+	return err == nil && out != ""
 }
 
 // reposInDir returns the immediate subdirectories of dir that are git

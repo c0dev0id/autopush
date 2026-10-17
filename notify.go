@@ -10,9 +10,10 @@ import (
 )
 
 const (
-	ansiRed   = "\033[31m"
-	ansiGreen = "\033[32m"
-	ansiReset = "\033[0m"
+	ansiRed    = "\033[31m"
+	ansiGreen  = "\033[32m"
+	ansiOrange = "\033[38;5;208m"
+	ansiReset  = "\033[0m"
 )
 
 var titleState struct {
@@ -68,6 +69,8 @@ func colorLine(line, status string) string {
 		return ansiRed + line + ansiReset
 	case strings.Contains(s, "passed"):
 		return ansiGreen + line + ansiReset
+	case strings.Contains(s, "skipped"):
+		return ansiOrange + line + ansiReset
 	}
 	return line
 }
