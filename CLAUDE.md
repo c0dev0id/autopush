@@ -26,7 +26,7 @@ make install     # build + copy to $HOME/.bin/autopush
 ./autopush -r              # also watch/push submodules (recursive)
 ./autopush -p              # pull --rebase before each push
 ./autopush -p 30           # also pull --rebase every 30s
-./autopush -a              # watch every repo in the current dir with an origin
+./autopush -a              # watch every usable repo in the current dir
 ```
 
 Provide a token for workflow monitoring via `GITHUB_TOKEN`, `GH_TOKEN`, or a

@@ -92,13 +92,57 @@ func listSubmodules(repoDir string) ([]string, error) {
 }
 
 func getRemoteURL(repoDir string) (string, error) {
-	return gitCmd(repoDir, "remote", "get-url", "origin")
+	return remoteURL(repoDir, "origin")
 }
 
-// reposInDir returns the immediate subdirectories of dir that are git repo
-// roots with an origin remote configured. It does not recurse. Entries that
-// are not repositories, not repo roots (e.g. a subdir of a surrounding repo),
-// or lack an origin remote are skipped.
+func remoteURL(repoDir, name string) (string, error) {
+	return gitCmd(repoDir, "remote", "get-url", name)
+}
+
+// getBranchRemote returns the remote the given branch tracks, or "" if the
+// branch has no upstream configured.
+func getBranchRemote(repoDir, branch string) (string, error) {
+	return gitCmd(repoDir, "config", "--get", "branch."+branch+".remote")
+}
+
+// isSSHRemote reports whether url is an SSH remote. HTTPS remotes are excluded
+// because they usually cannot be pushed without extra credential handling.
+func isSSHRemote(url string) bool {
+	return strings.HasPrefix(url, "git@") || strings.HasPrefix(url, "ssh://")
+}
+
+// repoUnusableReason validates that a repository can be pulled and pushed by
+// autopush without manual intervention. It returns an empty string when the
+// repo is usable, otherwise a human-readable reason to warn about and skip.
+// Transient conditions (e.g. a dirty working tree) are not checked here: those
+// resolve on their own and the repo should still be watched.
+func repoUnusableReason(repoDir string) string {
+	if _, err := getRepoRoot(repoDir); err != nil {
+		return "not a usable git repository"
+	}
+	branch, err := getCurrentBranch(repoDir)
+	if err != nil || branch == "HEAD" {
+		return "detached HEAD (not on a branch)"
+	}
+	remote, err := getBranchRemote(repoDir, branch)
+	if err != nil || remote == "" {
+		return "no upstream tracking branch set for " + branch
+	}
+	url, err := remoteURL(repoDir, remote)
+	if err != nil || url == "" {
+		return "tracking remote '" + remote + "' has no URL"
+	}
+	if !isSSHRemote(url) {
+		return "tracking remote '" + remote + "' is not ssh (" + url + ")"
+	}
+	return ""
+}
+
+// reposInDir returns the immediate subdirectories of dir that are git
+// repositories usable by autopush, without recursing. A directory without a
+// .git entry is not a repository and is skipped silently. A directory that is
+// a repository but cannot be cleanly pulled and pushed (detached HEAD, no
+// upstream, non-ssh remote, ...) is skipped with a warning explaining why.
 func reposInDir(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -110,15 +154,11 @@ func reposInDir(dir string) ([]string, error) {
 			continue
 		}
 		path := filepath.Join(dir, e.Name())
-		root, err := getRepoRoot(path)
-		if err != nil {
+		if _, err := os.Stat(filepath.Join(path, ".git")); err != nil {
 			continue
 		}
-		abs, err := filepath.Abs(path)
-		if err != nil || root != abs {
-			continue
-		}
-		if _, err := getRemoteURL(path); err != nil {
+		if reason := repoUnusableReason(path); reason != "" {
+			notify(e.Name(), "skipped (-a): "+reason)
 			continue
 		}
 		repos = append(repos, path)
