@@ -34,7 +34,7 @@ func main() {
 			fatalf("cannot scan current directory: %v", err)
 		}
 		if len(found) == 0 {
-			fatalf("no git repositories with an origin remote found in the current directory")
+			fatalf("no usable git repositories (on a branch with an ssh upstream) found in the current directory")
 		}
 		dirs = append(dirs, found...)
 	}
@@ -78,15 +78,11 @@ func main() {
 				fatalf("cannot list submodules (%s): %v", repoRoot, err)
 			}
 			for _, sp := range subPaths {
-				subRoot, err := getRepoRoot(sp)
-				if err != nil {
-					notify(filepath.Base(sp), "skipped (-r): not a usable git repository")
+				if reason := repoUnusableReason(sp); reason != "" {
+					notify(filepath.Base(sp), "skipped (-r): "+reason)
 					continue
 				}
-				if reason := repoUnusableReason(subRoot); reason != "" {
-					notify(filepath.Base(subRoot), "skipped (-r): "+reason)
-					continue
-				}
+				subRoot, _ := getRepoRoot(sp)
 				addRepo(subRoot, filepath.Base(subRoot))
 			}
 		}
@@ -381,22 +377,15 @@ func expandBundle(body string, known map[byte]bool) ([]string, bool) {
 			return nil, false
 		}
 		if c == 'p' {
-			if rest := body[i+1:]; rest != "" && isAllDigits(rest) {
-				return append(out, "-p="+rest), true
+			if rest := body[i+1:]; rest != "" {
+				if _, err := strconv.Atoi(rest); err == nil {
+					return append(out, "-p="+rest), true
+				}
 			}
 		}
 		out = append(out, "-"+string(c))
 	}
 	return out, true
-}
-
-func isAllDigits(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
 }
 
 func fatalf(format string, args ...any) {

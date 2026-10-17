@@ -63,6 +63,8 @@ func colorLine(line, status string) string {
 	if err != nil || fi.Mode()&os.ModeCharDevice == 0 {
 		return line
 	}
+	// Colour is keyed off substrings of the status; keep these words out of
+	// benign messages so they don't pick up an unintended colour.
 	s := strings.ToLower(status)
 	switch {
 	case strings.Contains(s, "failed"):
@@ -95,4 +97,3 @@ func restoreTmuxRename() {
 	}
 	exec.Command("tmux", "set-window-option", "automatic-rename", "on").Run()
 }
-
