@@ -14,3 +14,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Multiple repository support: pass one or more directory arguments to watch them all concurrently (`autopush dir1 dir2`). Works with `-1` too — all repos are pushed in parallel and the exit code is the worst outcome across all of them.
 - `-r` flag: automatically discover and watch all git submodules (recursive) alongside the parent repo.
 - `-p` flag: run `git pull --rebase` before each push, so remote-ahead situations are resolved automatically.
+- `-a` flag: watch every git repository in the current directory that has an origin remote, without recursing into subdirectories. Combinable with `-r` and `-p`.

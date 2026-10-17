@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,37 @@ func listSubmodules(repoDir string) ([]string, error) {
 
 func getRemoteURL(repoDir string) (string, error) {
 	return gitCmd(repoDir, "remote", "get-url", "origin")
+}
+
+// reposInDir returns the immediate subdirectories of dir that are git repo
+// roots with an origin remote configured. It does not recurse. Entries that
+// are not repositories, not repo roots (e.g. a subdir of a surrounding repo),
+// or lack an origin remote are skipped.
+func reposInDir(dir string) ([]string, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	var repos []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join(dir, e.Name())
+		root, err := getRepoRoot(path)
+		if err != nil {
+			continue
+		}
+		abs, err := filepath.Abs(path)
+		if err != nil || root != abs {
+			continue
+		}
+		if _, err := getRemoteURL(path); err != nil {
+			continue
+		}
+		repos = append(repos, path)
+	}
+	return repos, nil
 }
 
 // parseGitHubOwnerRepo extracts the owner and repo name from an https or ssh

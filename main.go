@@ -22,9 +22,20 @@ func main() {
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
 	recursive := flag.Bool("r", false, "also watch and push submodules")
 	doPull := flag.Bool("p", false, "pull --rebase before each push; -p N also pulls every N seconds")
+	allRepos := flag.Bool("a", false, "watch every git repo in the current directory that has an origin remote")
 	flag.Parse()
 
 	dirs := flag.Args()
+	if *allRepos {
+		found, err := reposInDir(".")
+		if err != nil {
+			fatalf("cannot scan current directory: %v", err)
+		}
+		if len(found) == 0 {
+			fatalf("no git repositories with an origin remote found in the current directory")
+		}
+		dirs = append(dirs, found...)
+	}
 	if len(dirs) == 0 {
 		dirs = []string{"."}
 	}
