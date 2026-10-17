@@ -26,6 +26,11 @@ import (
 
 const defaultTestRepo = "git@github.com:c0dev0id/autopush-test.git"
 
+const (
+	testUserName  = "autopush-integration"
+	testUserEmail = "claude@textmail.me"
+)
+
 const passingWorkflow = `name: passing
 on:
   push:
@@ -79,25 +84,38 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	h := &harness{t: t, bin: bin, repoURL: repoURL, dir: dir}
-	h.git("config", "user.name", "autopush-integration")
-	h.git("config", "user.email", "claude@textmail.me")
+	configIdentity(t, dir)
 	h.branch = h.git("rev-parse", "--abbrev-ref", "HEAD")
 	roots := strings.Fields(h.git("rev-list", "--max-parents=0", "HEAD"))
-	h.initialSHA = roots[len(roots)-1]
+	if len(roots) != 1 {
+		t.Fatalf("expected a single root commit, got %d: %v", len(roots), roots)
+	}
+	h.initialSHA = roots[0]
 
 	h.resetRemote()
 	t.Cleanup(h.resetRemote)
 	return h
 }
 
-// git runs a git command inside the working clone and fails the test on error.
+// mustGit runs a git command in dir and fails the test on error.
+func mustGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	out, err := gitCmd(dir, args...)
+	if err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+	return out
+}
+
+func configIdentity(t *testing.T, dir string) {
+	t.Helper()
+	mustGit(t, dir, "config", "user.name", testUserName)
+	mustGit(t, dir, "config", "user.email", testUserEmail)
+}
+
 func (h *harness) git(args ...string) string {
 	h.t.Helper()
-	out, err := exec.Command("git", append([]string{"-C", h.dir}, args...)...).CombinedOutput()
-	if err != nil {
-		h.t.Fatalf("git %v: %v\n%s", args, err, out)
-	}
-	return strings.TrimSpace(string(out))
+	return mustGit(h.t, h.dir, args...)
 }
 
 // resetRemote returns both the working clone and the remote branch to the
@@ -110,7 +128,6 @@ func (h *harness) resetRemote() {
 	h.git("push", "--force", "origin", h.branch)
 }
 
-// commitWorkflow writes a workflow file into the clone and commits it.
 func (h *harness) commitWorkflow(name, content string) {
 	h.t.Helper()
 	wfDir := filepath.Join(h.dir, ".github", "workflows")
@@ -132,23 +149,15 @@ func (h *harness) commitOnRemote() {
 	if out, err := exec.Command("git", "clone", h.repoURL, tmp).CombinedOutput(); err != nil {
 		h.t.Fatalf("clone for remote commit: %v\n%s", err, out)
 	}
-	run := func(args ...string) {
-		if out, err := exec.Command("git", append([]string{"-C", tmp}, args...)...).CombinedOutput(); err != nil {
-			h.t.Fatalf("git %v: %v\n%s", args, err, out)
-		}
-	}
-	run("config", "user.name", "autopush-integration")
-	run("config", "user.email", "claude@textmail.me")
+	configIdentity(h.t, tmp)
 	if err := os.WriteFile(filepath.Join(tmp, "remote.txt"), []byte(time.Now().String()), 0o644); err != nil {
 		h.t.Fatal(err)
 	}
-	run("add", "-A")
-	run("commit", "-q", "-m", "integration: remote-ahead commit")
-	run("push", "origin", h.branch)
+	mustGit(h.t, tmp, "add", "-A")
+	mustGit(h.t, tmp, "commit", "-q", "-m", "integration: remote-ahead commit")
+	mustGit(h.t, tmp, "push", "origin", h.branch)
 }
 
-// runAutopush runs the built binary in oneshot mode against the clone and
-// returns its combined output and exit code.
 func (h *harness) runAutopush(args ...string) (string, int) {
 	h.t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
