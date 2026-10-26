@@ -117,3 +117,38 @@ func TestReposInDir(t *testing.T) {
 		t.Errorf("reposInDir included %v, want %v", names, want)
 	}
 }
+
+func TestPullReportsMovedHEAD(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	bares := t.TempDir()
+	a := mk(t, t.TempDir(), "a")
+	bare := filepath.Join(bares, "a.git")
+	track(t, a, bares, bare)
+	branch, err := getCurrentBranch(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b := filepath.Join(t.TempDir(), "b")
+	run(t, "git", "clone", "-q", "-b", branch, bare, b)
+	git(t, b, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "remote")
+	git(t, b, "push", "-q", "origin", branch)
+
+	changed, err := pull(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed {
+		t.Error("remote ahead: changed = false, want true")
+	}
+
+	changed, err = pull(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed {
+		t.Error("nothing new: changed = true, want false")
+	}
+}

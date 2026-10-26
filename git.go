@@ -43,13 +43,22 @@ func isWorkspaceClean(repoDir string) bool {
 	return err == nil && out == ""
 }
 
-// pull runs git pull --rebase and returns any error.
-func pull(repoDir string) error {
-	out, err := exec.Command("git", "-C", repoDir, "pull", "--rebase").CombinedOutput()
+// pull runs git pull --rebase and reports whether HEAD moved, i.e. whether
+// anything was actually pulled in.
+func pull(repoDir string) (changed bool, err error) {
+	before, err := getCurrentSHA(repoDir)
 	if err != nil {
-		return fmt.Errorf("%s", strings.TrimSpace(string(out)))
+		return false, err
 	}
-	return nil
+	out, cmdErr := exec.Command("git", "-C", repoDir, "pull", "--rebase").CombinedOutput()
+	if cmdErr != nil {
+		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	}
+	after, err := getCurrentSHA(repoDir)
+	if err != nil {
+		return false, err
+	}
+	return after != before, nil
 }
 
 // push runs git push and reports whether anything was actually pushed.

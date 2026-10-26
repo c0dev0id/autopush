@@ -158,7 +158,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 					notify(repoName, "can't pull, workspace not clean")
 					continue
 				}
-				if err := pull(repoRoot); err != nil {
+				if _, err := pull(repoRoot); err != nil {
 					notify(repoName, "periodic pull failed: "+err.Error())
 				}
 			}
@@ -185,7 +185,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 		// the push carry the committed work. Prevents re-failing every tick.
 		if doPull && isWorkspaceClean(repoRoot) {
 			notify(repoName, "pulling...")
-			if err := pull(repoRoot); err != nil {
+			if _, err := pull(repoRoot); err != nil {
 				notify(repoName, "pull failed: "+err.Error())
 				setRepoStatus(repoName, true)
 				return
@@ -265,7 +265,7 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 
 	if doPull && isWorkspaceClean(repoRoot) {
 		notify(repoName, "pulling...")
-		if err := pull(repoRoot); err != nil {
+		if _, err := pull(repoRoot); err != nil {
 			notify(repoName, "pull failed: "+err.Error())
 			setRepoStatus(repoName, true)
 			return 1
