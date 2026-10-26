@@ -61,7 +61,7 @@ Usage:
 ```
 
 Provide a token for workflow monitoring via `GITHUB_TOKEN`, `GH_TOKEN`, or a
-`.gh_token` file in the working directory or `$HOME`. Without a token, pushes
+`.gh_token` file in the repository root or `$HOME`. Without a token, pushes
 still happen; workflow checks are skipped.
 
 Oneshot exit codes: `0` ok / no workflow, `1` error, `2` CI failed.

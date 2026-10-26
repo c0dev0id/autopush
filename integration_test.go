@@ -60,11 +60,13 @@ type harness struct {
 	dir        string
 	branch     string
 	initialSHA string
+	token      string
 }
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	if githubToken() == "" {
+	token := githubToken(".")
+	if token == "" {
 		t.Skip("no github token; set GITHUB_TOKEN/GH_TOKEN or provide a .gh_token")
 	}
 	repoURL := os.Getenv("AUTOPUSH_TEST_REPO")
@@ -83,7 +85,7 @@ func newHarness(t *testing.T) *harness {
 		t.Fatalf("clone %s: %v\n%s", repoURL, err, out)
 	}
 
-	h := &harness{t: t, bin: bin, repoURL: repoURL, dir: dir}
+	h := &harness{t: t, bin: bin, repoURL: repoURL, dir: dir, token: token}
 	configIdentity(t, dir)
 	h.branch = h.git("rev-parse", "--abbrev-ref", "HEAD")
 	roots := strings.Fields(h.git("rev-list", "--max-parents=0", "HEAD"))
@@ -164,7 +166,7 @@ func (h *harness) runAutopush(args ...string) (string, int) {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, h.bin, append(args, h.dir)...)
-	cmd.Env = append(os.Environ(), "GITHUB_TOKEN="+githubToken())
+	cmd.Env = append(os.Environ(), "GITHUB_TOKEN="+h.token)
 	var buf bytes.Buffer
 	cmd.Stdout = &buf
 	cmd.Stderr = &buf

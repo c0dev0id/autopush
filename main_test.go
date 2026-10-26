@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -29,5 +31,36 @@ func TestExpandBundledFlags(t *testing.T) {
 				t.Errorf("expandBundledFlags(%v) = %v, want %v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+func TestGithubToken(t *testing.T) {
+	t.Setenv("GITHUB_TOKEN", "")
+	t.Setenv("GH_TOKEN", "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repo := t.TempDir()
+
+	if got := githubToken(repo); got != "" {
+		t.Fatalf("no token anywhere: got %q, want empty", got)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, ".gh_token"), []byte("home-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := githubToken(repo); got != "home-token" {
+		t.Errorf("HOME fallback: got %q, want home-token", got)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, ".gh_token"), []byte("repo-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := githubToken(repo); got != "repo-token" {
+		t.Errorf("repo root before HOME: got %q, want repo-token", got)
+	}
+
+	t.Setenv("GH_TOKEN", "env-token")
+	if got := githubToken(repo); got != "env-token" {
+		t.Errorf("environment before files: got %q, want env-token", got)
 	}
 }

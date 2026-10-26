@@ -216,7 +216,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 			setRepoStatus(repoName, false)
 			return
 		}
-		token := githubToken()
+		token := githubToken(repoRoot)
 		if token == "" {
 			notify(repoName, "workflow check disabled: github token not set")
 			setRepoStatus(repoName, false)
@@ -295,7 +295,7 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 		setRepoStatus(repoName, false)
 		return 0
 	}
-	token := githubToken()
+	token := githubToken(repoRoot)
 	if token == "" {
 		setRepoStatus(repoName, false)
 		return 0
@@ -391,14 +391,18 @@ func fatalf(format string, args ...any) {
 	os.Exit(1)
 }
 
-func githubToken() string {
+func githubToken(repoRoot string) string {
 	if t := os.Getenv("GITHUB_TOKEN"); t != "" {
 		return t
 	}
 	if t := os.Getenv("GH_TOKEN"); t != "" {
 		return t
 	}
-	for _, path := range []string{".gh_token", filepath.Join(os.Getenv("HOME"), ".gh_token")} {
+	paths := []string{
+		filepath.Join(repoRoot, ".gh_token"),
+		filepath.Join(os.Getenv("HOME"), ".gh_token"),
+	}
+	for _, path := range paths {
 		if b, err := os.ReadFile(path); err == nil {
 			if t := strings.TrimSpace(string(b)); t != "" {
 				return t
