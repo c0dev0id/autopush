@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `-p` flag: run `git pull --rebase` before each push, so remote-ahead situations are resolved automatically. The pull is skipped when the working tree is dirty, since a rebase cannot run there; the push still carries any committed work.
 - `-a` flag: watch every usable git repository in the current directory, without recursing into subdirectories. Combinable with `-r` and `-p`. A repository is included only when it is on a branch, has an upstream tracking branch whose remote-tracking ref has been fetched, and that remote is an ssh URL. Repositories that fail a check (detached HEAD, no upstream, upstream not fetched, https-only remote, broken repository) are skipped with a warning naming the reason; https-only repositories can still be watched by passing their path explicitly.
 - Skip warnings are printed in orange when output goes to a terminal.
+- `-c <command>` flag: run a shell command from the repository root after autopush pulled or pushed changes, for example `-c "make build && make install"`. It runs once per push cycle, after the push; its output is shown as-is and a non-zero exit is reported.
 
 ### Changed
 - Push status is reported only after the push completes. The tool no longer prints a "pushing..." line before knowing the result, which previously contradicted the following "up to date" line when the remote was already current.

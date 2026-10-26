@@ -213,7 +213,7 @@ func TestIntegration(t *testing.T) {
 		}
 	})
 
-	t.Run("remote ahead resolved with -p", func(t *testing.T) {
+	t.Run("remote ahead resolved with -p, -c runs once", func(t *testing.T) {
 		h.resetRemote()
 		h.commitOnRemote()
 
@@ -223,12 +223,19 @@ func TestIntegration(t *testing.T) {
 		h.git("add", "-A")
 		h.git("commit", "-q", "-m", "integration: local commit")
 
-		out, code := h.runAutopush("-1", "-p")
+		out, code := h.runAutopush("-1", "-p", "-c", "echo ran >> hook.log")
 		if code != 0 {
 			t.Errorf("exit code = %d, want 0", code)
 		}
 		if !strings.Contains(out, "pushed") {
 			t.Errorf("expected a push after rebase:\n%s", out)
+		}
+		hookLog, err := os.ReadFile(filepath.Join(h.dir, "hook.log"))
+		if err != nil {
+			t.Fatalf("-c command did not run in the repo root: %v", err)
+		}
+		if string(hookLog) != "ran\n" {
+			t.Errorf("-c command output = %q, want it to have run exactly once", hookLog)
 		}
 	})
 }

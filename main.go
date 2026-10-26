@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"strconv"
@@ -25,6 +26,7 @@ func main() {
 	recursive := flag.Bool("r", false, "also watch and push submodules that are in a pushable state")
 	doPull := flag.Bool("p", false, "pull --rebase before each push; -p N also pulls every N seconds")
 	allRepos := flag.Bool("a", false, "watch every usable git repo in the current directory (on a branch, ssh upstream)")
+	onChange := flag.String("c", "", "shell command to run in the repo root after it pulled or pushed changes")
 	flag.Parse()
 
 	dirs := flag.Args()
@@ -112,7 +114,7 @@ func main() {
 			wg.Add(1)
 			go func(r repoInfo) {
 				defer wg.Done()
-				if code := runOneshot(r.root, r.name, *doPull); code != 0 {
+				if code := runOneshot(r.root, r.name, *doPull, *onChange); code != 0 {
 					mu.Lock()
 					if code > exitCode {
 						exitCode = code
@@ -127,13 +129,13 @@ func main() {
 	}
 
 	for _, r := range repos {
-		go runDaemon(r.root, r.name, *doPull, pullInterval)
+		go runDaemon(r.root, r.name, *doPull, pullInterval, *onChange)
 	}
 	<-sigCh
 	restoreTmuxRename()
 }
 
-func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
+func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChange string) {
 	branch, _ := getCurrentBranch(repoRoot)
 	notify(repoName, fmt.Sprintf("watching [%s]", branch))
 
@@ -158,8 +160,13 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 					notify(repoName, "can't pull, workspace not clean")
 					continue
 				}
-				if _, err := pull(repoRoot); err != nil {
+				changed, err := pull(repoRoot)
+				if err != nil {
 					notify(repoName, "periodic pull failed: "+err.Error())
+					continue
+				}
+				if changed {
+					runOnChange(repoRoot, repoName, onChange)
 				}
 			}
 		}()
@@ -181,11 +188,13 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 			cancelWorkflow = nil
 		}
 
+		changed := false
 		// A dirty tree cannot be rebased; skip the pull (not a failure) and let
 		// the push carry the committed work. Prevents re-failing every tick.
 		if doPull && isWorkspaceClean(repoRoot) {
 			notify(repoName, "pulling...")
-			if _, err := pull(repoRoot); err != nil {
+			changed, err = pull(repoRoot)
+			if err != nil {
 				notify(repoName, "pull failed: "+err.Error())
 				setRepoStatus(repoName, true)
 				return
@@ -201,6 +210,9 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 		if err != nil {
 			notify(repoName, "push failed: "+err.Error())
 			setRepoStatus(repoName, true)
+			if changed {
+				runOnChange(repoRoot, repoName, onChange)
+			}
 			return
 		}
 
@@ -209,6 +221,9 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 			notify(repoName, "up to date")
 		} else {
 			notify(repoName, "pushed "+sha[:8])
+		}
+		if changed || pushed {
+			runOnChange(repoRoot, repoName, onChange)
 		}
 
 		if !hasWorkflows(repoRoot) {
@@ -255,7 +270,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int) {
 	}
 }
 
-func runOneshot(repoRoot, repoName string, doPull bool) int {
+func runOneshot(repoRoot, repoName string, doPull bool, onChange string) int {
 	sha, err := getCurrentSHA(repoRoot)
 	if err != nil {
 		notify(repoName, "error: cannot get current SHA: "+err.Error())
@@ -263,9 +278,11 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 		return 1
 	}
 
+	changed := false
 	if doPull && isWorkspaceClean(repoRoot) {
 		notify(repoName, "pulling...")
-		if _, err := pull(repoRoot); err != nil {
+		changed, err = pull(repoRoot)
+		if err != nil {
 			notify(repoName, "pull failed: "+err.Error())
 			setRepoStatus(repoName, true)
 			return 1
@@ -282,12 +299,18 @@ func runOneshot(repoRoot, repoName string, doPull bool) int {
 	if err != nil {
 		notify(repoName, "push failed: "+err.Error())
 		setRepoStatus(repoName, true)
+		if changed {
+			runOnChange(repoRoot, repoName, onChange)
+		}
 		return 1
 	}
 	if pushed {
 		notify(repoName, "pushed "+sha[:8])
 	} else {
 		notify(repoName, "up to date")
+	}
+	if changed || pushed {
+		runOnChange(repoRoot, repoName, onChange)
 	}
 
 	if !hasWorkflows(repoRoot) {
@@ -410,4 +433,22 @@ func githubToken(repoRoot string) string {
 		}
 	}
 	return ""
+}
+
+// runOnChange runs command through sh -c in repoRoot with its output passed
+// through, and reports a non-zero exit. A no-op when command is empty.
+func runOnChange(repoRoot, repoName, command string) {
+	if command == "" {
+		return
+	}
+	notify(repoName, "running: "+command)
+	cmd := exec.Command("sh", "-c", command)
+	cmd.Dir = repoRoot
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		notify(repoName, "command failed: "+err.Error())
+		return
+	}
+	notify(repoName, "command ok")
 }

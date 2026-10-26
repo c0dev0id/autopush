@@ -23,6 +23,8 @@ func TestExpandBundledFlags(t *testing.T) {
 		{"unknown char passes through", []string{"prog", "-xyz"}, []string{"prog", "-xyz"}},
 		{"misplaced digit passes through", []string{"prog", "-p6r"}, []string{"prog", "-p6r"}},
 		{"path arg untouched", []string{"prog", "-r", "some/path"}, []string{"prog", "-r", "some/path"}},
+		{"value flag untouched", []string{"prog", "-c", "make build"}, []string{"prog", "-c", "make build"}},
+		{"value flag not bundleable", []string{"prog", "-rc", "make"}, []string{"prog", "-rc", "make"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -62,5 +64,17 @@ func TestGithubToken(t *testing.T) {
 	t.Setenv("GH_TOKEN", "env-token")
 	if got := githubToken(repo); got != "env-token" {
 		t.Errorf("environment before files: got %q, want env-token", got)
+	}
+}
+
+func TestRunOnChange(t *testing.T) {
+	dir := t.TempDir()
+	runOnChange(dir, "test", "echo one > marker && echo two >> marker")
+	got, err := os.ReadFile(filepath.Join(dir, "marker"))
+	if err != nil {
+		t.Fatalf("command did not run in the repo root: %v", err)
+	}
+	if string(got) != "one\ntwo\n" {
+		t.Errorf("marker = %q, want %q", got, "one\ntwo\n")
 	}
 }

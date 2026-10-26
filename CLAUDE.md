@@ -57,6 +57,7 @@ Usage:
 ./autopush -p              # pull --rebase before each push
 ./autopush -p 30           # also pull --rebase every 30s
 ./autopush -a              # watch every usable repo in the current dir
+./autopush -c "make build && make install"   # run this in the repo root after it pulled or pushed changes
 ./autopush -arp60          # short flags bundle; a number after p is its interval
 ```
 
@@ -71,7 +72,7 @@ Oneshot exit codes: `0` ok / no workflow, `1` error, `2` CI failed.
 Single `package main`, one file per responsibility:
 
 - **main.go** — flag pre-scans and parsing, repo resolution, daemon vs oneshot
-  dispatch, signal handling, per-repo goroutines, token lookup.
+  dispatch, signal handling, per-repo goroutines, token lookup, `-c` command execution.
 - **watch.go** — kqueue(2) watcher on a single file (`COMMIT_EDITMSG`).
 - **git.go** — all `git` subprocess wrappers, workflow-file detection,
   submodule listing, repo usability checks (`repoUnusableReason`), GitHub
@@ -107,6 +108,13 @@ Single `package main`, one file per responsibility:
   `git pull --rebase` runs first and the SHA is re-read (rebase rewrites it);
   the pull is skipped, not failed, while the working tree is dirty.
 
+- **Change command.** `-c <command>` runs `sh -c <command>` in the repo root,
+  synchronously, once per sync cycle: after a pull that moved `HEAD` or a push
+  that sent commits (also after a push failure that followed such a pull). Its
+  output is passed through unprefixed. A non-zero exit is reported as a red
+  line but does not change the repo's OK/FAIL state or the oneshot exit code,
+  which describe push and CI only.
+
 - **Workflow observation.** `watchWorkflows` runs under a `context.CancelFunc`
   stored in `doCheck`; a newer commit cancels the previous watch before starting
   a new one. It waits up to `appearTimeout` for runs tied to the pushed SHA, then
@@ -130,7 +138,8 @@ Single `package main`, one file per responsibility:
   `-a -r -p=60`, then `extractPullInterval` strips the value from `-p`. A new
   short flag must be added to the `known` map in `expandBundledFlags` (and to
   `TestExpandBundledFlags`), otherwise any bundle containing it passes through
-  untouched and `flag.Parse` rejects it.
+  untouched and `flag.Parse` rejects it. Flags that take a value (`-c`) are
+  deliberately not in that map: they cannot be bundled and must stand alone.
 - **Status text drives colour.** `colorLine` colours a line by substring of the
   status: "failed" red, "passed" green, "skipped" orange. Keep those words out
   of neutral messages. The integration test also matches on `CI passed`,
