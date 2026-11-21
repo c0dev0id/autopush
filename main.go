@@ -151,33 +151,14 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 		return
 	}
 
-	if pullInterval > 0 {
-		go func() {
-			t := time.NewTicker(time.Duration(pullInterval) * time.Second)
-			defer t.Stop()
-			for range t.C {
-				if !isWorkspaceClean(repoRoot) {
-					notify(repoName, "can't pull, workspace not clean")
-					continue
-				}
-				changed, err := pull(repoRoot)
-				if err != nil {
-					notify(repoName, "periodic pull failed: "+err.Error())
-					continue
-				}
-				if changed {
-					runOnChange(repoRoot, repoName, onChange)
-				}
-			}
-		}()
-	}
-
 	var (
 		lastPushedSHA  string
 		cancelWorkflow context.CancelFunc
 	)
 
-	doCheck := func() {
+	// doCheck pushes a new HEAD and starts watching its workflows. pulled reports
+	// that a periodic pull already moved HEAD in this cycle.
+	doCheck := func(pulled bool) {
 		sha, err := getCurrentSHA(repoRoot)
 		if err != nil || sha == lastPushedSHA {
 			return
@@ -188,10 +169,10 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 			cancelWorkflow = nil
 		}
 
-		changed := false
+		changed := pulled
 		// A dirty tree cannot be rebased; skip the pull (not a failure) and let
 		// the push carry the committed work. Prevents re-failing every tick.
-		if doPull && isWorkspaceClean(repoRoot) {
+		if doPull && !pulled && isWorkspaceClean(repoRoot) {
 			notify(repoName, "pulling...")
 			changed, err = pull(repoRoot)
 			if err != nil {
@@ -255,17 +236,42 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 		go func() { watchWorkflows(ctx, owner, repo, sha, token, repoName, false) }()
 	}
 
-	doCheck()
+	// periodicPull pulls on the -p N interval and hands a moved HEAD to doCheck.
+	periodicPull := func() {
+		if !isWorkspaceClean(repoRoot) {
+			notify(repoName, "can't pull, workspace not clean")
+			return
+		}
+		changed, err := pull(repoRoot)
+		if err != nil {
+			notify(repoName, "periodic pull failed: "+err.Error())
+			return
+		}
+		if changed {
+			doCheck(true)
+		}
+	}
+
+	doCheck(false)
 
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
+	var pullTick <-chan time.Time // nil, never fires, without -p N
+	if pullInterval > 0 {
+		t := time.NewTicker(time.Duration(pullInterval) * time.Second)
+		defer t.Stop()
+		pullTick = t.C
+	}
+
 	for {
 		select {
 		case <-watcher.C:
-			doCheck()
+			doCheck(false)
 		case <-ticker.C:
-			doCheck()
+			doCheck(false)
+		case <-pullTick:
+			periodicPull()
 		}
 	}
 }

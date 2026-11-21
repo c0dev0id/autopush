@@ -108,6 +108,13 @@ Single `package main`, one file per responsibility:
   `git pull --rebase` runs first and the SHA is re-read (rebase rewrites it);
   the pull is skipped, not failed, while the working tree is dirty.
 
+- **Daemon loop.** `runDaemon`'s select loop is the only goroutine that runs
+  git or the `-c` command for its repo: the watcher, the 30s ticker and the
+  `-p N` pull ticker are all cases of it. A periodic pull that moves `HEAD`
+  hands over to `doCheck(true)`, which pushes and runs the command once. Keep
+  new git work on this loop; a second goroutine brings back overlapping
+  commands and racing `index.lock` access.
+
 - **Change command.** `-c <command>` runs `sh -c <command>` in the repo root,
   synchronously, once per sync cycle: after a pull that moved `HEAD` or a push
   that sent commits (also after a push failure that followed such a pull). Its
