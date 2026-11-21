@@ -1,9 +1,11 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -126,13 +128,98 @@ func TestGithubToken(t *testing.T) {
 }
 
 func TestRunOnChange(t *testing.T) {
-	dir := t.TempDir()
-	runOnChange(dir, "test", "echo one > marker && echo two >> marker")
-	got, err := os.ReadFile(filepath.Join(dir, "marker"))
-	if err != nil {
-		t.Fatalf("command did not run in the repo root: %v", err)
+	cases := []struct {
+		name, command string
+		marker        string // content the command leaves in ./marker, "" for none
+		output        string // expected in what autopush prints, "" for nothing
+	}{
+		{"runs in the repo root", "echo one > marker && echo two >> marker", "one\ntwo\n", "command ok"},
+		{"failure is reported", "echo x > marker; exit 3", "x\n", "command failed: exit status 3"},
+		{"empty command is a no-op", "", "", ""},
 	}
-	if string(got) != "one\ntwo\n" {
-		t.Errorf("marker = %q, want %q", got, "one\ntwo\n")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			dir := t.TempDir()
+			out := captureStdout(t, func() { runOnChange(dir, "test", c.command) })
+			if c.output == "" && out != "" || !strings.Contains(out, c.output) {
+				t.Errorf("output = %q, want %q", out, c.output)
+			}
+			got, _ := os.ReadFile(filepath.Join(dir, "marker"))
+			if string(got) != c.marker {
+				t.Errorf("marker = %q, want %q", got, c.marker)
+			}
+		})
+	}
+}
+
+// captureStdout returns what fn writes to os.Stdout, including the output of
+// child processes that inherit it.
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	orig := os.Stdout
+	os.Stdout = w
+	fn()
+	os.Stdout = orig
+	w.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(out)
+}
+
+func TestSyncHead(t *testing.T) {
+	isolateGit(t)
+	bares := t.TempDir()
+	a := mk(t, t.TempDir(), "a")
+	bare := filepath.Join(bares, "a.git")
+	track(t, a, bares, bare)
+	branch, err := getCurrentBranch(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other := filepath.Join(t.TempDir(), "other")
+	run(t, "git", "clone", "-q", "-b", branch, bare, other)
+	for _, dir := range []string{a, other} {
+		git(t, dir, "config", "user.email", "t")
+		git(t, dir, "config", "user.name", "t")
+	}
+	// Distinct messages: an empty commit made in the same second on the same
+	// parent would otherwise be identical, SHA included, on both sides.
+	commit := func(dir, msg string) { git(t, dir, "commit", "-q", "--allow-empty", "-m", msg) }
+	remoteCommit := func() {
+		git(t, other, "pull", "-q", "--rebase")
+		commit(other, "remote")
+		git(t, other, "push", "-q")
+	}
+
+	steps := []struct {
+		name                             string
+		setup                            func()
+		doPull                           bool
+		wantChanged, wantPushed, wantErr bool
+	}{
+		{"nothing new", func() {}, false, false, false, false},
+		{"local commit", func() { commit(a, "local") }, false, false, true, false},
+		{"remote ahead, -p", remoteCommit, true, true, false, false},
+		{"remote ahead and local commit, no -p", func() { remoteCommit(); commit(a, "local") }, false, false, false, true},
+		{"same, retried with -p", func() {}, true, true, true, false},
+	}
+	for _, s := range steps {
+		s.setup()
+		var sha string
+		var changed, pushed bool
+		captureStdout(t, func() { sha, changed, pushed, err = syncHead(a, "test", s.doPull) })
+		if changed != s.wantChanged || pushed != s.wantPushed || (err != nil) != s.wantErr {
+			t.Fatalf("%s: changed=%v pushed=%v err=%v; want changed=%v pushed=%v err=%v",
+				s.name, changed, pushed, err, s.wantChanged, s.wantPushed, s.wantErr)
+		}
+		if head, _ := getCurrentSHA(a); err == nil && sha != head {
+			t.Errorf("%s: sha = %s, want HEAD %s", s.name, sha, head)
+		}
 	}
 }

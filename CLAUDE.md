@@ -71,8 +71,10 @@ Oneshot exit codes: `0` ok / no workflow, `1` error, `2` CI failed.
 
 Single `package main`, one file per responsibility:
 
-- **main.go** — flag pre-scans and parsing, repo resolution, daemon vs oneshot
-  dispatch, signal handling, per-repo goroutines, token lookup, `-c` command execution.
+- **main.go** — flag parsing, repo resolution, daemon vs oneshot dispatch,
+  signal handling, per-repo goroutines, token lookup, `-c` command execution,
+  and the sync step both modes share: `syncHead` (pull, push, report) and
+  `workflowTarget` (whether and where CI can be watched).
 - **watch.go** — kqueue(2) watcher on a single file (`COMMIT_EDITMSG`).
 - **git.go** — all `git` subprocess wrappers, workflow-file detection,
   submodule listing, repo usability checks (`repoUnusableReason`), GitHub
@@ -103,7 +105,7 @@ Single `package main`, one file per responsibility:
   mechanism when `COMMIT_EDITMSG` does not exist at startup. Detection drives
   `doCheck`, which compares `HEAD` against the last pushed SHA.
 
-- **Push & recovery.** `push` reports whether anything was actually sent
+- **Push & recovery.** Both modes go through `syncHead`. `push` reports whether anything was actually sent
   (distinguishing "everything up-to-date"). On failure the error is surfaced and
   the repo is marked FAIL; the watcher keeps running, so once the user resolves
   the problem and commits again, the next event retries. With `-p`, a

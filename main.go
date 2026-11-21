@@ -167,79 +167,28 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 	// doCheck pushes a new HEAD and starts watching its workflows. pulled reports
 	// that a periodic pull already moved HEAD in this cycle.
 	doCheck := func(pulled bool) {
-		sha, err := getCurrentSHA(repoRoot)
-		if err != nil || sha == lastPushedSHA {
+		if sha, err := getCurrentSHA(repoRoot); err != nil || sha == lastPushedSHA {
 			return
 		}
-
 		if cancelWorkflow != nil {
 			cancelWorkflow()
 			cancelWorkflow = nil
 		}
 
-		changed := pulled
-		// A dirty tree cannot be rebased; skip the pull (not a failure) and let
-		// the push carry the committed work. Prevents re-failing every tick.
-		if doPull && !pulled && trackedFilesClean(repoRoot) {
-			notify(repoName, "pulling...")
-			changed, err = pull(repoRoot)
-			if err != nil {
-				notify(repoName, "pull failed: "+err.Error())
-				setRepoStatus(repoName, true)
-				return
-			}
-			// rebase may have rewritten local SHAs; re-read before push
-			sha, err = getCurrentSHA(repoRoot)
-			if err != nil || sha == lastPushedSHA {
-				return
-			}
-		}
-
-		pushed, err := push(repoRoot)
-		if err != nil {
-			notify(repoName, "push failed: "+err.Error())
-			setRepoStatus(repoName, true)
-			if changed {
-				runOnChange(repoRoot, repoName, onChange)
-			}
-			return
-		}
-
-		lastPushedSHA = sha
-		if !pushed {
-			notify(repoName, "up to date")
-		} else {
-			notify(repoName, "pushed "+sha[:8])
-		}
+		sha, changed, pushed, err := syncHead(repoRoot, repoName, doPull && !pulled)
 		// Deferred so the workflow watch below starts before the command runs.
-		if changed || pushed {
+		if pulled || changed || pushed {
 			defer runOnChange(repoRoot, repoName, onChange)
 		}
-
-		if !hasWorkflows(repoRoot) {
-			notify(repoName, "no workflows configured")
-			setRepoStatus(repoName, false)
-			return
-		}
-		token := githubToken(repoRoot)
-		if token == "" {
-			notify(repoName, "workflow check disabled: github token not set")
-			setRepoStatus(repoName, false)
-			return
-		}
-		remoteURL, err := getPushRemoteURL(repoRoot)
 		if err != nil {
-			notify(repoName, "workflow check disabled: cannot read remote URL")
-			setRepoStatus(repoName, false)
 			return
 		}
-		owner, repo, err := parseGitHubOwnerRepo(remoteURL)
-		if err != nil {
-			notify(repoName, "workflow check disabled: remote is not a GitHub repo")
-			setRepoStatus(repoName, false)
-			return
-		}
+		lastPushedSHA = sha
 
+		owner, repo, token, ok := workflowTarget(repoRoot, repoName)
+		if !ok {
+			return
+		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cancelWorkflow = cancel
 		go func() { watchWorkflows(ctx, owner, repo, sha, token, repoName, false) }()
@@ -286,70 +235,76 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 }
 
 func runOneshot(repoRoot, repoName string, doPull bool, onChange string) int {
-	sha, err := getCurrentSHA(repoRoot)
+	sha, changed, pushed, err := syncHead(repoRoot, repoName, doPull)
+	if changed || pushed {
+		runOnChange(repoRoot, repoName, onChange)
+	}
 	if err != nil {
-		notify(repoName, "error: cannot get current SHA: "+err.Error())
-		setRepoStatus(repoName, true)
 		return 1
 	}
+	owner, repo, token, ok := workflowTarget(repoRoot, repoName)
+	if !ok {
+		return 0
+	}
+	return watchWorkflows(context.Background(), owner, repo, sha, token, repoName, true)
+}
 
-	changed := false
+// syncHead pulls (with doPull, when tracked files are clean) and pushes the
+// current branch, reporting each step; a failure also marks the repo FAIL.
+// changed reports that the pull moved HEAD, pushed that the push sent commits.
+func syncHead(repoRoot, repoName string, doPull bool) (sha string, changed, pushed bool, err error) {
+	// A dirty tree cannot be rebased; skip the pull (not a failure) and let
+	// the push carry the committed work. Prevents re-failing every tick.
 	if doPull && trackedFilesClean(repoRoot) {
 		notify(repoName, "pulling...")
-		changed, err = pull(repoRoot)
-		if err != nil {
+		if changed, err = pull(repoRoot); err != nil {
 			notify(repoName, "pull failed: "+err.Error())
 			setRepoStatus(repoName, true)
-			return 1
-		}
-		sha, err = getCurrentSHA(repoRoot)
-		if err != nil {
-			notify(repoName, "error after pull: "+err.Error())
-			setRepoStatus(repoName, true)
-			return 1
+			return "", false, false, err
 		}
 	}
-
-	pushed, err := push(repoRoot)
-	if err != nil {
+	// Read only now: the rebase may have rewritten local SHAs.
+	if sha, err = getCurrentSHA(repoRoot); err != nil {
+		notify(repoName, "reading HEAD failed: "+err.Error())
+		setRepoStatus(repoName, true)
+		return "", changed, false, err
+	}
+	if pushed, err = push(repoRoot); err != nil {
 		notify(repoName, "push failed: "+err.Error())
 		setRepoStatus(repoName, true)
-		if changed {
-			runOnChange(repoRoot, repoName, onChange)
-		}
-		return 1
+		return sha, changed, false, err
 	}
 	if pushed {
 		notify(repoName, "pushed "+sha[:8])
 	} else {
 		notify(repoName, "up to date")
 	}
-	if changed || pushed {
-		runOnChange(repoRoot, repoName, onChange)
-	}
+	return sha, changed, pushed, nil
+}
 
-	if !hasWorkflows(repoRoot) {
-		notify(repoName, "no workflows configured")
+// workflowTarget returns the GitHub repository and token for watching the
+// workflows of repoRoot. When they cannot be watched it says why and marks the
+// repo OK, since the push was the last step.
+func workflowTarget(repoRoot, repoName string) (owner, repo, token string, ok bool) {
+	unwatched := func(reason string) (string, string, string, bool) {
+		notify(repoName, reason)
 		setRepoStatus(repoName, false)
-		return 0
+		return "", "", "", false
 	}
-	token := githubToken(repoRoot)
-	if token == "" {
-		setRepoStatus(repoName, false)
-		return 0
+	if !hasWorkflows(repoRoot) {
+		return unwatched("no workflows configured")
+	}
+	if token = githubToken(repoRoot); token == "" {
+		return unwatched("workflow check disabled: github token not set")
 	}
 	remoteURL, err := getPushRemoteURL(repoRoot)
 	if err != nil {
-		setRepoStatus(repoName, false)
-		return 0
+		return unwatched("workflow check disabled: cannot read remote URL")
 	}
-	owner, repo, err := parseGitHubOwnerRepo(remoteURL)
-	if err != nil {
-		setRepoStatus(repoName, false)
-		return 0
+	if owner, repo, err = parseGitHubOwnerRepo(remoteURL); err != nil {
+		return unwatched("workflow check disabled: remote is not a GitHub repo")
 	}
-
-	return watchWorkflows(context.Background(), owner, repo, sha, token, repoName, true)
+	return owner, repo, token, true
 }
 
 // joinPullInterval rewrites "-p N" as "-p=N" for any integer N. As -p is a bool
