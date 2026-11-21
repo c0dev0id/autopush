@@ -101,8 +101,18 @@ func listSubmodules(repoDir string) ([]string, error) {
 	return paths, nil
 }
 
-func getRemoteURL(repoDir string) (string, error) {
-	return remoteURL(repoDir, "origin")
+// getPushRemoteURL returns the URL that a plain `git push` of the current
+// branch pushes to, following git's own choice of push remote.
+func getPushRemoteURL(repoDir string) (string, error) {
+	branch, err := getCurrentBranch(repoDir)
+	if err != nil {
+		return "", err
+	}
+	remote, err := gitCmd(repoDir, "for-each-ref", "--format=%(push:remotename)", "refs/heads/"+branch)
+	if err != nil || remote == "" {
+		return "", fmt.Errorf("no push remote for %s", branch)
+	}
+	return gitCmd(repoDir, "remote", "get-url", "--push", remote)
 }
 
 func remoteURL(repoDir, name string) (string, error) {

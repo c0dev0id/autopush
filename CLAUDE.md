@@ -129,7 +129,10 @@ Single `package main`, one file per responsibility:
   a new one. It waits up to `appearTimeout` for runs tied to the pushed SHA, then
   polls every `pollInterval` until all runs are `completed`. If no run ever
   appears for the SHA, it falls back to reporting the latest run of each
-  workflow and monitoring any that are still in progress.
+  workflow and monitoring any that are still in progress. The GitHub
+  repository is the one the push went to: `getPushRemoteURL` asks git for the
+  push remote (`%(push:remotename)`, which follows `pushRemote`, `pushDefault`
+  and the tracking remote) and that remote's push URL, never just `origin`.
 
 - **Notification.** `setXTitle` writes terminal escape sequences to stdout: the
   xterm title (`\033]0;…\007`) and the screen/tmux window-title

@@ -219,7 +219,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 			setRepoStatus(repoName, false)
 			return
 		}
-		remoteURL, err := getRemoteURL(repoRoot)
+		remoteURL, err := getPushRemoteURL(repoRoot)
 		if err != nil {
 			notify(repoName, "workflow check disabled: cannot read remote URL")
 			setRepoStatus(repoName, false)
@@ -330,7 +330,7 @@ func runOneshot(repoRoot, repoName string, doPull bool, onChange string) int {
 		setRepoStatus(repoName, false)
 		return 0
 	}
-	remoteURL, err := getRemoteURL(repoRoot)
+	remoteURL, err := getPushRemoteURL(repoRoot)
 	if err != nil {
 		setRepoStatus(repoName, false)
 		return 0

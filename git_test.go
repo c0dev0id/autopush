@@ -179,3 +179,29 @@ func TestParseGitHubOwnerRepo(t *testing.T) {
 		}
 	}
 }
+
+func TestGetPushRemoteURL(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := mk(t, t.TempDir(), "r")
+	track(t, dir, t.TempDir(), "git@example.com:me/upstream.git")
+	git(t, dir, "remote", "add", "fork", "git@example.com:me/fork.git")
+	branch, err := getCurrentBranch(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	check := func(setup, want string) {
+		t.Helper()
+		if got, err := getPushRemoteURL(dir); err != nil || got != want {
+			t.Errorf("%s: got %q, %v; want %q", setup, got, err, want)
+		}
+	}
+
+	check("tracks origin", "git@example.com:me/upstream.git")
+	git(t, dir, "config", "branch."+branch+".remote", "fork")
+	check("tracks fork", "git@example.com:me/fork.git")
+	git(t, dir, "config", "branch."+branch+".remote", "origin")
+	git(t, dir, "config", "branch."+branch+".pushRemote", "fork")
+	check("tracks origin, pushRemote fork", "git@example.com:me/fork.git")
+}
