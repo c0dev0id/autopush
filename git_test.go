@@ -25,6 +25,19 @@ func TestIsSSHRemote(t *testing.T) {
 	}
 }
 
+// isolateGit skips the test when git is missing and hides the user's git
+// configuration from it, so settings such as url.<base>.insteadOf cannot change
+// what the test observes.
+func isolateGit(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+}
+
 func git(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	all := append([]string{"-C", dir}, args...)
@@ -76,9 +89,7 @@ func mk(t *testing.T, parent, name string) string {
 }
 
 func TestReposInDir(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
+	isolateGit(t)
 	root := t.TempDir()
 	bares := t.TempDir()
 
@@ -119,9 +130,7 @@ func TestReposInDir(t *testing.T) {
 }
 
 func TestPullReportsMovedHEAD(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
+	isolateGit(t)
 	bares := t.TempDir()
 	a := mk(t, t.TempDir(), "a")
 	bare := filepath.Join(bares, "a.git")
@@ -181,9 +190,7 @@ func TestParseGitHubOwnerRepo(t *testing.T) {
 }
 
 func TestGetPushRemoteURL(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
+	isolateGit(t)
 	dir := mk(t, t.TempDir(), "r")
 	track(t, dir, t.TempDir(), "git@example.com:me/upstream.git")
 	git(t, dir, "remote", "add", "fork", "git@example.com:me/fork.git")
@@ -207,9 +214,7 @@ func TestGetPushRemoteURL(t *testing.T) {
 }
 
 func TestTrackedFilesClean(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
+	isolateGit(t)
 	dir := t.TempDir()
 	initRepo(t, dir)
 	write := func(name, content string) {

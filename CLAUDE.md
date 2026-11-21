@@ -82,7 +82,8 @@ Single `package main`, one file per responsibility:
   with aggregate OK/FAIL state across all watched repos.
 - **git_test.go / main_test.go** — unit tests. `git_test.go` builds real
   repositories (with bare-repo upstreams) in `t.TempDir()` and shells out to
-  `git`; it skips when `git` is not on `PATH`.
+  `git`. Every such test starts with `isolateGit(t)`, which skips without `git`
+  and hides the user's git configuration (`url.*.insteadOf` and the like).
 - **integration_test.go** — behind the `integration` build tag; see above.
 
 ## Architecture Notes
