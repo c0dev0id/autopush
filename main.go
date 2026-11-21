@@ -427,9 +427,9 @@ func githubToken(repoRoot string) string {
 	if t := os.Getenv("GH_TOKEN"); t != "" {
 		return t
 	}
-	paths := []string{
-		filepath.Join(repoRoot, ".gh_token"),
-		filepath.Join(os.Getenv("HOME"), ".gh_token"),
+	paths := []string{filepath.Join(repoRoot, ".gh_token")}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, ".gh_token"))
 	}
 	for _, path := range paths {
 		if b, err := os.ReadFile(path); err == nil {

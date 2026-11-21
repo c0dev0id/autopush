@@ -47,6 +47,25 @@ func TestGithubToken(t *testing.T) {
 		t.Fatalf("no token anywhere: got %q, want empty", got)
 	}
 
+	// With HOME unset, a .gh_token in the working directory must not be used.
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cwd := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cwd, ".gh_token"), []byte("cwd-token\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(cwd); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chdir(wd) })
+	t.Setenv("HOME", "")
+	if got := githubToken(repo); got != "" {
+		t.Errorf("HOME unset: got %q, want empty", got)
+	}
+	t.Setenv("HOME", home)
+
 	if err := os.WriteFile(filepath.Join(home, ".gh_token"), []byte("home-token\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
