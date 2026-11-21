@@ -22,4 +22,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Push status is reported only after the push completes. The tool no longer prints a "pushing..." line before knowing the result, which previously contradicted the following "up to date" line when the remote was already current.
 
 ### Fixed
+- Workflow monitoring works for remotes written as `ssh://git@github.com/owner/repo.git`. These were accepted for pushing but reported as "not a GitHub repo".
 - `.gh_token` is looked up in the root of each watched repository, then in `$HOME`. It was previously read relative to the working directory, so a repository given by path never had its own token file found.

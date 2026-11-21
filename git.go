@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,21 +187,20 @@ func reposInDir(dir string) ([]string, error) {
 	return repos, nil
 }
 
-// parseGitHubOwnerRepo extracts the owner and repo name from an https or ssh
-// GitHub remote URL.
+// parseGitHubOwnerRepo extracts the owner and repo name from a GitHub remote:
+// a URL (https://, ssh://) or the scp-like git@github.com:owner/repo form.
 func parseGitHubOwnerRepo(remoteURL string) (owner, repo string, err error) {
-	s := strings.TrimSuffix(remoteURL, ".git")
-	if after, ok := strings.CutPrefix(s, "https://github.com/"); ok {
-		parts := strings.SplitN(after, "/", 2)
-		if len(parts) == 2 {
-			return parts[0], parts[1], nil
+	path, scpLike := strings.CutPrefix(remoteURL, "git@github.com:")
+	if !scpLike {
+		u, err := url.Parse(remoteURL)
+		if err != nil || u.Hostname() != "github.com" {
+			return "", "", fmt.Errorf("unrecognised GitHub remote URL: %q", remoteURL)
 		}
+		path = u.Path
 	}
-	if after, ok := strings.CutPrefix(s, "git@github.com:"); ok {
-		parts := strings.SplitN(after, "/", 2)
-		if len(parts) == 2 {
-			return parts[0], parts[1], nil
-		}
+	owner, repo, ok := strings.Cut(strings.TrimSuffix(strings.Trim(path, "/"), ".git"), "/")
+	if !ok || owner == "" || repo == "" {
+		return "", "", fmt.Errorf("unrecognised GitHub remote URL: %q", remoteURL)
 	}
-	return "", "", fmt.Errorf("unrecognised GitHub remote URL: %q", remoteURL)
+	return owner, repo, nil
 }

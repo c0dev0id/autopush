@@ -152,3 +152,30 @@ func TestPullReportsMovedHEAD(t *testing.T) {
 		t.Error("nothing new: changed = true, want false")
 	}
 }
+
+func TestParseGitHubOwnerRepo(t *testing.T) {
+	cases := []struct {
+		url         string
+		owner, repo string
+		ok          bool
+	}{
+		{"git@github.com:me/x.git", "me", "x", true},
+		{"git@github.com:me/x", "me", "x", true},
+		{"https://github.com/me/x.git", "me", "x", true},
+		{"https://github.com/me/x/", "me", "x", true},
+		{"https://user@github.com/me/x.git", "me", "x", true},
+		{"ssh://git@github.com/me/x.git", "me", "x", true},
+		{"ssh://git@github.com:22/me/x.git", "me", "x", true},
+		{"https://gitlab.com/me/x.git", "", "", false},
+		{"git@gitlab.com:me/x.git", "", "", false},
+		{"https://github.com/me", "", "", false},
+		{"/srv/git/x.git", "", "", false},
+	}
+	for _, c := range cases {
+		owner, repo, err := parseGitHubOwnerRepo(c.url)
+		if (err == nil) != c.ok || owner != c.owner || repo != c.repo {
+			t.Errorf("parseGitHubOwnerRepo(%q) = %q, %q, %v; want %q, %q, ok=%v",
+				c.url, owner, repo, err, c.owner, c.repo, c.ok)
+		}
+	}
+}
