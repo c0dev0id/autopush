@@ -203,8 +203,9 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 		} else {
 			notify(repoName, "pushed "+sha[:8])
 		}
+		// Deferred so the workflow watch below starts before the command runs.
 		if changed || pushed {
-			runOnChange(repoRoot, repoName, onChange)
+			defer runOnChange(repoRoot, repoName, onChange)
 		}
 
 		if !hasWorkflows(repoRoot) {

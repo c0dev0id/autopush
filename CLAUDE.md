@@ -117,8 +117,10 @@ Single `package main`, one file per responsibility:
 
 - **Change command.** `-c <command>` runs `sh -c <command>` in the repo root,
   synchronously, once per sync cycle: after a pull that moved `HEAD` or a push
-  that sent commits (also after a push failure that followed such a pull). Its
-  output is passed through unprefixed. A non-zero exit is reported as a red
+  that sent commits (also after a push failure that followed such a pull). In
+  daemon mode the call is deferred in `doCheck`, so the workflow watch starts
+  before the command; in oneshot mode it runs before the CI wait. Its output
+  is passed through unprefixed. A non-zero exit is reported as a red
   line but does not change the repo's OK/FAIL state or the oneshot exit code,
   which describe push and CI only.
 
