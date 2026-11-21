@@ -80,7 +80,8 @@ Single `package main`, one file per responsibility:
 - **github.go** — GitHub Actions REST polling and terminal-state detection.
 - **notify.go** — stdout output (colored on a TTY) and window-title updates,
   with aggregate OK/FAIL state across all watched repos.
-- **git_test.go / main_test.go** — unit tests. `git_test.go` builds real
+- **git_test.go / main_test.go / github_test.go** — unit tests. `getJSON` is
+  tested against an `httptest` server. `git_test.go` builds real
   repositories (with bare-repo upstreams) in `t.TempDir()` and shells out to
   `git`. Every such test starts with `isolateGit(t)`, which skips without `git`
   and hides the user's git configuration (`url.*.insteadOf` and the like).

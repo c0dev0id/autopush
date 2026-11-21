@@ -96,9 +96,7 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName strin
 			anyFailed := false
 			for i := range inProgress {
 				if inProgress[i].Status == "completed" {
-					switch inProgress[i].Conclusion {
-					case "success", "skipped", "neutral":
-					default:
+					if !isPassing(inProgress[i].Conclusion) {
 						anyFailed = true
 					}
 					continue
@@ -113,23 +111,13 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName strin
 					allDone = false
 					continue
 				}
-				switch updated.Conclusion {
-				case "success", "skipped", "neutral":
-				default:
+				if !isPassing(updated.Conclusion) {
 					anyFailed = true
 					notify(repoName, fmt.Sprintf("FAILED: %s -- %s", updated.Name, updated.HTMLURL))
 				}
 			}
 			if allDone {
-				if !anyFailed {
-					notify(repoName, "CI passed")
-					setRepoStatus(repoName, false)
-				}
-				if anyFailed {
-					setRepoStatus(repoName, true)
-					return 2
-				}
-				return 0
+				return reportSettled(repoName, anyFailed)
 			}
 		}
 	}
@@ -159,51 +147,44 @@ func watchWorkflows(ctx context.Context, owner, repo, sha, token, repoName strin
 				allDone = false
 				continue
 			}
-			switch r.Conclusion {
-			case "success", "skipped", "neutral":
-				// acceptable
-			default:
+			if !isPassing(r.Conclusion) {
 				anyFailed = true
 				notify(repoName, fmt.Sprintf("FAILED: %s -- %s", r.Name, r.HTMLURL))
 			}
 		}
 
 		if allDone {
-			if !anyFailed {
-				notify(repoName, "CI passed")
-				setRepoStatus(repoName, false)
-			}
-			if anyFailed {
-				setRepoStatus(repoName, true)
-				return 2
-			}
-			return 0
+			return reportSettled(repoName, anyFailed)
 		}
 	}
 }
 
+// reportSettled reports the CI result once every run has completed and returns
+// the oneshot exit code: 0 when all passed, 2 when any failed.
+func reportSettled(repoName string, anyFailed bool) int {
+	if anyFailed {
+		setRepoStatus(repoName, true)
+		return 2
+	}
+	notify(repoName, "CI passed")
+	setRepoStatus(repoName, false)
+	return 0
+}
+
+// isPassing reports whether a completed run's conclusion does not count as a
+// CI failure.
+func isPassing(conclusion string) bool {
+	switch conclusion {
+	case "success", "skipped", "neutral":
+		return true
+	}
+	return false
+}
+
 func fetchRecentRuns(ctx context.Context, client *http.Client, owner, repo, token string) ([]workflowRun, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs?per_page=50", owner, repo)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API: %s", resp.Status)
-	}
-
 	var result runsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs?per_page=50", owner, repo)
+	if err := getJSON(ctx, client, apiURL, token, &result); err != nil {
 		return nil, err
 	}
 	// API returns newest first; keep first occurrence of each workflow name.
@@ -219,40 +200,29 @@ func fetchRecentRuns(ctx context.Context, client *http.Client, owner, repo, toke
 }
 
 func fetchRunByID(ctx context.Context, client *http.Client, owner, repo string, id int64, token string) (workflowRun, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs/%d", owner, repo, id)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return workflowRun{}, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return workflowRun{}, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return workflowRun{}, fmt.Errorf("GitHub API: %s", resp.Status)
-	}
-
 	var r workflowRun
-	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs/%d", owner, repo, id)
+	if err := getJSON(ctx, client, apiURL, token, &r); err != nil {
 		return workflowRun{}, err
 	}
 	return r, nil
 }
 
 func fetchRuns(ctx context.Context, client *http.Client, owner, repo, sha, token string) ([]workflowRun, error) {
-	url := fmt.Sprintf(
-		"https://api.github.com/repos/%s/%s/actions/runs?head_sha=%s&per_page=20",
-		owner, repo, sha,
-	)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
+	var result runsResponse
+	apiURL := fmt.Sprintf("https://api.github.com/repos/%s/%s/actions/runs?head_sha=%s&per_page=20", owner, repo, sha)
+	if err := getJSON(ctx, client, apiURL, token, &result); err != nil {
 		return nil, err
+	}
+	return result.WorkflowRuns, nil
+}
+
+// getJSON sends an authenticated GET to the GitHub API and decodes the JSON
+// response into v.
+func getJSON(ctx context.Context, client *http.Client, apiURL, token string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, apiURL, nil)
+	if err != nil {
+		return err
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -260,17 +230,12 @@ func fetchRuns(ctx context.Context, client *http.Client, owner, repo, sha, token
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API: %s", resp.Status)
+		return fmt.Errorf("GitHub API: %s", resp.Status)
 	}
-
-	var result runsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-	return result.WorkflowRuns, nil
+	return json.NewDecoder(resp.Body).Decode(v)
 }
