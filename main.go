@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -16,6 +17,9 @@ import (
 )
 
 func main() {
+	log.SetFlags(0)
+	log.SetPrefix("autopush: ")
+
 	// Both run before flag.Parse. expandBundledFlags splits POSIX-style
 	// bundles (-arp, -rap60) into separate tokens; extractPullInterval then
 	// strips the optional interval from -p so flag.Parse sees -p as a bool.
@@ -33,10 +37,10 @@ func main() {
 	if *allRepos {
 		found, err := reposInDir(".")
 		if err != nil {
-			fatalf("cannot scan current directory: %v", err)
+			log.Fatalf("cannot scan current directory: %v", err)
 		}
 		if len(found) == 0 {
-			fatalf("no usable git repositories (on a branch with an ssh upstream) found in the current directory")
+			log.Fatalf("no usable git repositories (on a branch with an ssh upstream) found in the current directory")
 		}
 		dirs = append(dirs, found...)
 	}
@@ -63,21 +67,21 @@ func main() {
 	for _, dir := range dirs {
 		repoRoot, err := getRepoRoot(dir)
 		if err != nil {
-			fatalf("not a git repository (%s): %v", dir, err)
+			log.Fatalf("not a git repository (%s): %v", dir, err)
 		}
 		branch, err := getCurrentBranch(repoRoot)
 		if err != nil {
-			fatalf("cannot determine branch (%s): %v", repoRoot, err)
+			log.Fatalf("cannot determine branch (%s): %v", repoRoot, err)
 		}
 		if branch == "HEAD" {
-			fatalf("detached HEAD in %s -- check out a branch first", repoRoot)
+			log.Fatalf("detached HEAD in %s -- check out a branch first", repoRoot)
 		}
 		addRepo(repoRoot, filepath.Base(repoRoot))
 
 		if *recursive {
 			subPaths, err := listSubmodules(repoRoot)
 			if err != nil {
-				fatalf("cannot list submodules (%s): %v", repoRoot, err)
+				log.Fatalf("cannot list submodules (%s): %v", repoRoot, err)
 			}
 			for _, sp := range subPaths {
 				if reason := repoUnusableReason(sp); reason != "" {
@@ -414,11 +418,6 @@ func expandBundle(body string, known map[byte]bool) ([]string, bool) {
 		out = append(out, "-"+string(c))
 	}
 	return out, true
-}
-
-func fatalf(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "autopush: "+format+"\n", args...)
-	os.Exit(1)
 }
 
 func githubToken(repoRoot string) string {
