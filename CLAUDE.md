@@ -106,7 +106,9 @@ Single `package main`, one file per responsibility:
   the repo is marked FAIL; the watcher keeps running, so once the user resolves
   the problem and commits again, the next event retries. With `-p`, a
   `git pull --rebase` runs first and the SHA is re-read (rebase rewrites it);
-  the pull is skipped, not failed, while the working tree is dirty.
+  the pull is skipped, not failed, while tracked files have uncommitted
+  changes. Untracked files, such as `-c` build output, do not block it: a
+  rebase runs fine with them.
 
 - **Daemon loop.** `runDaemon`'s select loop is the only goroutine that runs
   git or the `-c` command for its repo: the watcher, the 30s ticker and the

@@ -205,3 +205,36 @@ func TestGetPushRemoteURL(t *testing.T) {
 	git(t, dir, "config", "branch."+branch+".pushRemote", "fork")
 	check("tracks origin, pushRemote fork", "git@example.com:me/fork.git")
 }
+
+func TestTrackedFilesClean(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	dir := t.TempDir()
+	initRepo(t, dir)
+	write := func(name, content string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("tracked.txt", "a")
+	git(t, dir, "add", "tracked.txt")
+	git(t, dir, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add")
+
+	if !trackedFilesClean(dir) {
+		t.Error("fresh commit: got dirty, want clean")
+	}
+	write("build.o", "untracked")
+	if !trackedFilesClean(dir) {
+		t.Error("untracked file only: got dirty, want clean")
+	}
+	write("tracked.txt", "b")
+	if trackedFilesClean(dir) {
+		t.Error("modified tracked file: got clean, want dirty")
+	}
+	git(t, dir, "add", "tracked.txt")
+	if trackedFilesClean(dir) {
+		t.Error("staged change: got clean, want dirty")
+	}
+}

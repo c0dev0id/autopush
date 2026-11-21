@@ -39,8 +39,10 @@ func getRepoRoot(dir string) (string, error) {
 	return gitCmd(dir, "rev-parse", "--show-toplevel")
 }
 
-func isWorkspaceClean(repoDir string) bool {
-	out, err := gitCmd(repoDir, "status", "--porcelain")
+// trackedFilesClean reports whether tracked files have no uncommitted changes;
+// untracked files do not count.
+func trackedFilesClean(repoDir string) bool {
+	out, err := gitCmd(repoDir, "status", "--porcelain", "--untracked-files=no")
 	return err == nil && out == ""
 }
 

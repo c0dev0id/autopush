@@ -172,7 +172,7 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 		changed := pulled
 		// A dirty tree cannot be rebased; skip the pull (not a failure) and let
 		// the push carry the committed work. Prevents re-failing every tick.
-		if doPull && !pulled && isWorkspaceClean(repoRoot) {
+		if doPull && !pulled && trackedFilesClean(repoRoot) {
 			notify(repoName, "pulling...")
 			changed, err = pull(repoRoot)
 			if err != nil {
@@ -239,8 +239,8 @@ func runDaemon(repoRoot, repoName string, doPull bool, pullInterval int, onChang
 
 	// periodicPull pulls on the -p N interval and hands a moved HEAD to doCheck.
 	periodicPull := func() {
-		if !isWorkspaceClean(repoRoot) {
-			notify(repoName, "can't pull, workspace not clean")
+		if !trackedFilesClean(repoRoot) {
+			notify(repoName, "can't pull, uncommitted changes")
 			return
 		}
 		changed, err := pull(repoRoot)
@@ -286,7 +286,7 @@ func runOneshot(repoRoot, repoName string, doPull bool, onChange string) int {
 	}
 
 	changed := false
-	if doPull && isWorkspaceClean(repoRoot) {
+	if doPull && trackedFilesClean(repoRoot) {
 		notify(repoName, "pulling...")
 		changed, err = pull(repoRoot)
 		if err != nil {
