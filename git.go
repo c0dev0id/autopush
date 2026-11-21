@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -53,9 +54,8 @@ func pull(repoDir string) (changed bool, err error) {
 	if err != nil {
 		return false, err
 	}
-	out, cmdErr := exec.Command("git", "-C", repoDir, "pull", "--rebase").CombinedOutput()
-	if cmdErr != nil {
-		return false, fmt.Errorf("%s", strings.TrimSpace(string(out)))
+	if out, err := gitCmd(repoDir, "pull", "--rebase"); err != nil {
+		return false, errors.New(out)
 	}
 	after, err := getCurrentSHA(repoDir)
 	if err != nil {
@@ -67,13 +67,11 @@ func pull(repoDir string) (changed bool, err error) {
 // push runs git push and reports whether anything was actually pushed.
 // Returns (false, nil) when the remote is already up to date.
 func push(repoDir string) (pushed bool, err error) {
-	out, cmdErr := exec.Command("git", "-C", repoDir, "push").CombinedOutput()
-	output := strings.TrimSpace(string(out))
-	if cmdErr != nil {
-		return false, fmt.Errorf("%s", output)
+	out, err := gitCmd(repoDir, "push")
+	if err != nil {
+		return false, errors.New(out)
 	}
-	upToDate := strings.Contains(strings.ToLower(output), "everything up")
-	return !upToDate, nil
+	return !strings.Contains(strings.ToLower(out), "everything up"), nil
 }
 
 // hasWorkflows reports whether the repo contains any GitHub Actions workflow files.
