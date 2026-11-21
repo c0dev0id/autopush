@@ -91,6 +91,9 @@ Single `package main`, one file per responsibility:
 
 ## Architecture Notes
 
+The reasons behind these notes are in `.github/decisions.md`; diagrams are in
+`.github/architecture.md`.
+
 - **Repo selection.** Paths given on the command line are only checked for
   being a repository on a branch (detached HEAD is fatal). Repositories found
   by `-a` and submodules found by `-r` additionally go through
@@ -105,30 +108,27 @@ Single `package main`, one file per responsibility:
   mechanism when `COMMIT_EDITMSG` does not exist at startup. Detection drives
   `doCheck`, which compares `HEAD` against the last pushed SHA.
 
-- **Push & recovery.** Both modes go through `syncHead`. `push` reports whether anything was actually sent
-  (distinguishing "everything up-to-date"). On failure the error is surfaced and
-  the repo is marked FAIL; the watcher keeps running, so once the user resolves
-  the problem and commits again, the next event retries. With `-p`, a
-  `git pull --rebase` runs first and the SHA is re-read (rebase rewrites it);
-  the pull is skipped, not failed, while tracked files have uncommitted
-  changes. Untracked files, such as `-c` build output, do not block it: a
-  rebase runs fine with them.
+- **Push & recovery.** Both modes go through `syncHead`. `push` reports whether
+  anything was actually sent (distinguishing "everything up-to-date"). On
+  failure the error is surfaced and the repo is marked FAIL; the watcher keeps
+  running, so once the user resolves the problem and commits again, the next
+  event retries. With `-p`, a `git pull --rebase` runs first and the SHA is
+  read afterwards (rebase rewrites it); the pull is skipped, not failed, while
+  tracked files have uncommitted changes. Untracked files do not count.
 
 - **Daemon loop.** `runDaemon`'s select loop is the only goroutine that runs
   git or the `-c` command for its repo: the watcher, the 30s ticker and the
   `-p N` pull ticker are all cases of it. A periodic pull that moves `HEAD`
   hands over to `doCheck(true)`, which pushes and runs the command once. Keep
-  new git work on this loop; a second goroutine brings back overlapping
-  commands and racing `index.lock` access.
+  new git work on this loop.
 
 - **Change command.** `-c <command>` runs `sh -c <command>` in the repo root,
   synchronously, once per sync cycle: after a pull that moved `HEAD` or a push
   that sent commits (also after a push failure that followed such a pull). In
   daemon mode the call is deferred in `doCheck`, so the workflow watch starts
   before the command; in oneshot mode it runs before the CI wait. Its output
-  is passed through unprefixed. A non-zero exit is reported as a red
-  line but does not change the repo's OK/FAIL state or the oneshot exit code,
-  which describe push and CI only.
+  is passed through unprefixed. A non-zero exit is reported as a red line but
+  changes neither the repo's OK/FAIL state nor the oneshot exit code.
 
 - **Workflow observation.** `watchWorkflows` runs under a `context.CancelFunc`
   stored in `doCheck`; a newer commit cancels the previous watch before starting
@@ -141,12 +141,13 @@ Single `package main`, one file per responsibility:
   and the tracking remote) and that remote's push URL, never just `origin`.
 
 - **Notification.** `setXTitle` writes terminal escape sequences to stdout: the
-  xterm title (`\033]0;…\007`) and the screen/tmux window-title
-  (`\033k…\033\\`). There is no tmux variable or `status-right` integration —
-  to show status in tmux, let the window title through (e.g. keep
-  `automatic-rename` off while autopush owns the title). On exit the daemon
-  restores `automatic-rename on`. `setRepoStatus` must only be called at terminal
-  states (push done, CI settled), never for transient "pushing…"/"pulling…".
+  xterm title (`\033]0;…\007`, which tmux keeps as the pane title) and the
+  screen/tmux window name (`\033k…\033\\`). There is no tmux variable or
+  `status-right` integration. tmux applies the window name only with
+  `allow-rename on` and then turns `automatic-rename` off for that window; on
+  exit autopush turns it back on. `setRepoStatus` must only be called at
+  terminal states (push done, CI settled), never for transient
+  "pushing…"/"pulling…".
 
 ## Conventions
 
