@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="300" viewBox="0 0 1200 300" role="img" aria-label="autopush">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0d1117"/>
+      <stop offset="1" stop-color="#1b2430"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="300" rx="28" fill="url(#bg)"/>
+  <g stroke="#3fb950" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <line x1="160" y1="232" x2="160" y2="78"/>
+    <polyline points="122,112 160,70 198,112"/>
+  </g>
+  <g fill="#0d1117" stroke="#3fb950" stroke-width="10">
+    <circle cx="160" cy="232" r="20"/>
+    <circle cx="160" cy="170" r="20"/>
+  </g>
+  <text x="262" y="172" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="112" font-weight="700" fill="#e6edf3">autopush</text>
+  <text x="266" y="232" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="34" fill="#8b949e">commit <tspan fill="#3fb950">→</tspan> push <tspan fill="#3fb950">→</tspan> watch CI</text>
+  <g transform="translate(906 64)">
+    <rect width="230" height="56" rx="28" fill="#238636" fill-opacity="0.18" stroke="#3fb950" stroke-width="2"/>
+    <text x="115" y="37" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="26" fill="#3fb950">OK (repo)</text>
+  </g>
+</svg>
