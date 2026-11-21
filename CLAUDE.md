@@ -147,13 +147,14 @@ Single `package main`, one file per responsibility:
 
 ## Conventions
 
-- **Flag parsing.** Two pre-scans rewrite `os.Args` before `flag.Parse()`
-  because Go's `flag` can express neither POSIX bundles nor a flag that is both
-  a bool and takes a value: `expandBundledFlags` splits `-arp60` into
-  `-a -r -p=60`, then `extractPullInterval` strips the value from `-p`. A new
+- **Flag parsing.** `-p` is a `flag.BoolFunc`, so bare `-p` and `-p=N` parse
+  natively; `parsePullInterval` reads the value. Two rewrites run on the
+  arguments first, because `flag` handles neither POSIX bundles nor a value
+  after a space on a bool flag: `expandBundledFlags` splits `-arp60` into
+  `-a -r -p=60`, then `joinPullInterval` turns `-p N` into `-p=N`. A new
   short flag must be added to the `known` map in `expandBundledFlags` (and to
   `TestExpandBundledFlags`), otherwise any bundle containing it passes through
-  untouched and `flag.Parse` rejects it. Flags that take a value (`-c`) are
+  untouched and flag parsing rejects it. Flags that take a value (`-c`) are
   deliberately not in that map: they cannot be bundled and must stand alone.
 - **Status text drives colour.** `colorLine` colours a line by substring of the
   status: "failed" red, "passed" green, "skipped" orange. Keep those words out

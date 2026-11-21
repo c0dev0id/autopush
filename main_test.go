@@ -36,6 +36,45 @@ func TestExpandBundledFlags(t *testing.T) {
 	}
 }
 
+func TestJoinPullInterval(t *testing.T) {
+	cases := []struct {
+		in, want []string
+	}{
+		{[]string{"prog", "-p", "30", "dir"}, []string{"prog", "-p=30", "dir"}},
+		{[]string{"prog", "-a", "-r", "-p", "60"}, []string{"prog", "-a", "-r", "-p=60"}},
+		{[]string{"prog", "-p", "0"}, []string{"prog", "-p=0"}},
+		{[]string{"prog", "-p", "dir"}, []string{"prog", "-p", "dir"}},
+		{[]string{"prog", "-p"}, []string{"prog", "-p"}},
+		{[]string{"prog", "-c", "30"}, []string{"prog", "-c", "30"}},
+	}
+	for _, c := range cases {
+		if got := joinPullInterval(c.in); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("joinPullInterval(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestParsePullInterval(t *testing.T) {
+	cases := []struct {
+		in   string
+		want int
+		ok   bool
+	}{
+		{"true", 0, true},
+		{"30", 30, true},
+		{"0", 0, false},
+		{"-5", 0, false},
+		{"x", 0, false},
+		{"false", 0, false},
+	}
+	for _, c := range cases {
+		got, err := parsePullInterval(c.in)
+		if got != c.want || (err == nil) != c.ok {
+			t.Errorf("parsePullInterval(%q) = %d, %v; want %d, ok=%v", c.in, got, err, c.want, c.ok)
+		}
+	}
+}
+
 func TestGithubToken(t *testing.T) {
 	t.Setenv("GITHUB_TOKEN", "")
 	t.Setenv("GH_TOKEN", "")

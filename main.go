@@ -20,18 +20,22 @@ func main() {
 	log.SetFlags(0)
 	log.SetPrefix("autopush: ")
 
-	// Both run before flag.Parse. expandBundledFlags splits POSIX-style
-	// bundles (-arp, -rap60) into separate tokens; extractPullInterval then
-	// strips the optional interval from -p so flag.Parse sees -p as a bool.
-	os.Args = expandBundledFlags(os.Args)
-	pullInterval := extractPullInterval()
-
 	oneshot := flag.Bool("1", false, "push once, wait for workflow, exit with status")
 	recursive := flag.Bool("r", false, "also watch and push submodules that are in a pushable state")
-	doPull := flag.Bool("p", false, "pull --rebase before each push; -p N also pulls every N seconds")
+	var (
+		doPull       bool
+		pullInterval int
+	)
+	flag.BoolFunc("p", "pull --rebase before each push; -p N also pulls every N seconds", func(v string) (err error) {
+		doPull = true
+		pullInterval, err = parsePullInterval(v)
+		return err
+	})
 	allRepos := flag.Bool("a", false, "watch every usable git repo in the current directory (on a branch, ssh upstream)")
 	onChange := flag.String("c", "", "shell command to run in the repo root after it pulled or pushed changes")
-	flag.Parse()
+	// flag handles neither POSIX bundles (-arp60) nor a value after a space on a
+	// bool flag (-p 30); both are rewritten into forms it does handle.
+	flag.CommandLine.Parse(joinPullInterval(expandBundledFlags(os.Args))[1:])
 
 	dirs := flag.Args()
 	if *allRepos {
@@ -118,7 +122,7 @@ func main() {
 			wg.Add(1)
 			go func(r repoInfo) {
 				defer wg.Done()
-				if code := runOneshot(r.root, r.name, *doPull, *onChange); code != 0 {
+				if code := runOneshot(r.root, r.name, doPull, *onChange); code != 0 {
 					mu.Lock()
 					if code > exitCode {
 						exitCode = code
@@ -133,7 +137,7 @@ func main() {
 	}
 
 	for _, r := range repos {
-		go runDaemon(r.root, r.name, *doPull, pullInterval, *onChange)
+		go runDaemon(r.root, r.name, doPull, pullInterval, *onChange)
 	}
 	<-sigCh
 	restoreTmuxRename()
@@ -348,32 +352,34 @@ func runOneshot(repoRoot, repoName string, doPull bool, onChange string) int {
 	return watchWorkflows(context.Background(), owner, repo, sha, token, repoName, true)
 }
 
-// extractPullInterval scans os.Args for -p N or -p=N, strips the numeric
-// value from os.Args (so flag.Parse sees -p as a plain bool), and returns
-// the interval in seconds. Returns 0 if -p has no numeric argument.
-func extractPullInterval() int {
-	filtered := os.Args[:1:1]
-	interval := 0
-	for i := 1; i < len(os.Args); i++ {
-		arg := os.Args[i]
-		if val, ok := strings.CutPrefix(arg, "-p="); ok {
-			if n, err := strconv.Atoi(val); err == nil && n > 0 {
-				interval = n
-				filtered = append(filtered, "-p")
-				continue
-			}
-		} else if arg == "-p" && i+1 < len(os.Args) {
-			if n, err := strconv.Atoi(os.Args[i+1]); err == nil && n > 0 {
-				interval = n
-				i++ // consume the number
-				filtered = append(filtered, "-p")
+// joinPullInterval rewrites "-p N" as "-p=N" for any integer N. As -p is a bool
+// flag, flag would otherwise take N for a positional argument.
+func joinPullInterval(args []string) []string {
+	out := args[:1:1]
+	for i := 1; i < len(args); i++ {
+		if args[i] == "-p" && i+1 < len(args) {
+			if _, err := strconv.Atoi(args[i+1]); err == nil {
+				out = append(out, "-p="+args[i+1])
+				i++
 				continue
 			}
 		}
-		filtered = append(filtered, arg)
+		out = append(out, args[i])
 	}
-	os.Args = filtered
-	return interval
+	return out
+}
+
+// parsePullInterval parses the value of -p: "true" for a bare -p, which means
+// no periodic pull, or a positive number of seconds.
+func parsePullInterval(v string) (int, error) {
+	if v == "true" {
+		return 0, nil
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return 0, fmt.Errorf("want a positive number of seconds, got %q", v)
+	}
+	return n, nil
 }
 
 // expandBundledFlags splits POSIX-style bundled short flags into separate

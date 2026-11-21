@@ -19,6 +19,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `-c <command>` flag: run a shell command from the repository root after autopush pulled or pushed changes, for example `-c "make build && make install"`. It runs once per push cycle, after the push; its output is shown as-is and a non-zero exit is reported.
 
 ### Changed
+- An invalid `-p` interval such as `-p 0` or `-p=x` is rejected with an error. `-p=0` used to turn pulling off without a message.
 - Push status is reported only after the push completes. The tool no longer prints a "pushing..." line before knowing the result, which previously contradicted the following "up to date" line when the remote was already current.
 
 ### Fixed
